@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "DevPulse — Uptime monitoring for solo developers",
   description:
-    "Know the moment your project goes down. Uptime monitoring built for solo developers — simple to set up, and free to use even once you're making money.",
+    "Know when it's down. Not hours later. Uptime monitoring built for solo developers — simple to set up, free even once you're making money.",
   keywords: [
     "uptime monitoring",
     "solo developer",
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "DevPulse — Uptime monitoring for solo developers",
     description:
-      "Know the moment your project goes down. Simple uptime monitoring, free to use even for commercial projects.",
+      "Know when it's down. Not hours later. Simple uptime monitoring, free even for commercial projects.",
     type: "website",
     siteName: "DevPulse",
   },
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "DevPulse — Uptime monitoring for solo developers",
     description:
-      "Know the moment your project goes down. Simple uptime monitoring, free to use even for commercial projects.",
+      "Know when it's down. Not hours later. Simple uptime monitoring, free even for commercial projects.",
   },
 };
 
