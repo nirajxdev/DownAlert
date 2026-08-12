@@ -11,6 +11,7 @@
 
 
 DevPulse is a developer-focused uptime monitoring product designed for solo builders, indie hackers, and individual developers who deploy and maintain their own SaaS applications, APIs, and side projects.
+
 The product is built around one principle: **you should know immediately when something breaks without having to manage an enterprise-grade monitoring platform.**
 
 > A simple, reliable uptime monitor built specifically for solo developers.
