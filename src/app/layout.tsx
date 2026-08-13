@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DevPulse — Uptime monitoring for solo developers",
+  title: "DownAlert — Uptime monitoring for solo developers",
   description:
     "Know when it's down. Not hours later. Uptime monitoring built for solo developers — simple to set up, free even once you're making money.",
   keywords: [
@@ -14,15 +14,15 @@ export const metadata: Metadata = {
     "free monitoring",
   ],
   openGraph: {
-    title: "DevPulse — Uptime monitoring for solo developers",
+    title: "DownAlert — Uptime monitoring for solo developers",
     description:
       "Know when it's down. Not hours later. Simple uptime monitoring, free even for commercial projects.",
     type: "website",
-    siteName: "DevPulse",
+    siteName: "DownAlert",
   },
   twitter: {
     card: "summary_large_image",
-    title: "DevPulse — Uptime monitoring for solo developers",
+    title: "DownAlert — Uptime monitoring for solo developers",
     description:
       "Know when it's down. Not hours later. Simple uptime monitoring, free even for commercial projects.",
   },
@@ -39,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap"
           rel="stylesheet"
         />
       </head>

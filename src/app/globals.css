@@ -1,18 +1,20 @@
 @import "tailwindcss";
 
-/* ─── Design Tokens (Light Mode) ─── */
+/* ─── Design Tokens (DownAlert — Premium White) ─── */
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --surface: #f8fafc;
-  --border: #e2e8f0;
-  --border-subtle: #f1f5f9;
-  --muted: #94a3b8;
-  --muted-foreground: #64748b;
-  --accent: #0f766e;
-  --accent-hover: #0d6560;
+  --background: #fafaf9;
+  --foreground: #4a5568;
+  --surface: #ffffff;
+  --border: #e8e6e1;
+  --border-subtle: #f0eeea;
+  --muted: #9ca3af;
+  --muted-foreground: #6b7280;
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
   --accent-light: #ccfbf1;
-  --heading: #0c1425;
+  --heading: #0f1a2e;
+  --shadow-soft: 0 1px 2px rgba(15, 26, 46, 0.04), 0 8px 32px rgba(15, 26, 46, 0.06);
+  --shadow-card: 0 1px 3px rgba(15, 26, 46, 0.03), 0 12px 40px rgba(15, 26, 46, 0.05);
 }
 
 @theme inline {
@@ -27,6 +29,8 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-light: var(--accent-light);
   --color-heading: var(--heading);
+
+  --font-serif: "Playfair Display", Georgia, serif;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
@@ -43,15 +47,47 @@ body {
 }
 
 ::selection {
-  background: rgba(15, 118, 110, 0.15);
+  background: rgba(15, 26, 46, 0.12);
   color: var(--heading);
+}
+
+/* ─── Typography ─── */
+.font-serif {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+/* ─── Premium components ─── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--heading);
+  color: #ffffff;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--heading) 90%, transparent);
+}
+
+.premium-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-card);
 }
 
 /* ─── Animations ─── */
 @keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(24px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -65,42 +101,6 @@ body {
   }
   50% {
     transform: translateY(4px);
-  }
-}
-
-@keyframes mesh-shift {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(30px, -20px) scale(1.05);
-  }
-  66% {
-    transform: translate(-20px, 15px) scale(0.97);
-  }
-}
-
-@keyframes mesh-shift-2 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(-25px, 25px) scale(1.03);
-  }
-  66% {
-    transform: translate(20px, -10px) scale(0.98);
-  }
-}
-
-@keyframes mesh-shift-3 {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(15px, 20px) scale(1.04);
-  }
-  66% {
-    transform: translate(-30px, -15px) scale(0.96);
   }
 }
 
@@ -133,71 +133,81 @@ body {
   animation: bounce-down 2s ease-in-out infinite;
 }
 
-/* ─── Hero Mesh Gradient ─── */
-.hero-mesh {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(160deg, #f0fdfa 0%, #e0f2fe 25%, #ede9fe 50%, #fce7f3 75%, #f0fdf4 100%);
+/* ─── Hero — bottom abstract visual with top fade ─── */
+.hero-abstract-visual {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50vh;
+  min-height: 280px;
+  background-color: #e8eef4;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(13, 148, 136, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 15% 80%, rgba(100, 149, 237, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 35% at 85% 75%, rgba(99, 102, 241, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 45% at 40% 90%, rgba(45, 212, 191, 0.15) 0%, transparent 65%);
 }
 
-.hero-mesh::before,
-.hero-mesh::after {
-  content: '';
+.hero-visual-fade {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.5;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50vh;
+  min-height: 280px;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    rgba(250, 250, 249, 0.5) 45%,
+    var(--background) 88%
+  );
   pointer-events: none;
 }
 
-.hero-mesh::before {
-  width: 600px;
-  height: 600px;
-  top: -15%;
-  left: -5%;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.35) 0%, transparent 70%);
-  animation: mesh-shift 20s ease-in-out infinite;
-}
-
-.hero-mesh::after {
-  width: 500px;
-  height: 500px;
-  bottom: -10%;
-  right: -5%;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.3) 0%, transparent 70%);
-  animation: mesh-shift-2 18s ease-in-out infinite;
-}
-
-.hero-mesh-blob {
+/* ─── Inner pages — subtle ambient visual ─── */
+.page-subtle-visual {
   position: absolute;
-  width: 450px;
-  height: 450px;
-  top: 20%;
-  left: 50%;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.35;
-  background: radial-gradient(circle, rgba(45, 212, 191, 0.4) 0%, transparent 70%);
-  animation: mesh-shift-3 22s ease-in-out infinite;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40vh;
+  min-height: 200px;
+  background-color: #eef2f6;
+  background-image:
+    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(13, 148, 136, 0.15) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 35% at 20% 85%, rgba(100, 149, 237, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 35% 30% at 80% 80%, rgba(148, 163, 184, 0.1) 0%, transparent 70%);
+}
+
+.page-subtle-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40vh;
+  min-height: 200px;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    rgba(250, 250, 249, 0.6) 50%,
+    var(--background) 90%
+  );
   pointer-events: none;
 }
 
-/* ─── Dot Grid Overlay ─── */
-.dot-grid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
-  background-size: 24px 24px;
+/* ─── Nav Pill ─── */
+.nav-pill {
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
 }
 
 /* ─── Card Hover ─── */
 .card-lift {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  border-color: color-mix(in srgb, var(--muted) 50%, var(--border));
+  box-shadow: var(--shadow-soft);
 }
