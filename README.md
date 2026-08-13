@@ -1,16 +1,15 @@
-# **DevPulse** - Know When Your Project Goes Down
+# **DownAlert** - Know When Your Project Goes Down
 
 ![Status](https://img.shields.io/badge/Status-MVP-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Uptime Monitoring](https://img.shields.io/badge/Uptime-Monitoring-blue)
 ![Email Alerts](https://img.shields.io/badge/Alerts-Email-red)
-![5 Min Checks](https://img.shields.io/badge/Checks-5%20Min-purple)
 ![Solo Developers](https://img.shields.io/badge/Built%20For-Solo%20Developers-black)
 ![Open Source](https://img.shields.io/badge/Open%20Source-Yes-blue)
 ![Developer Tool](https://img.shields.io/badge/Category-Developer%20Tool-orange)
 
 
-DevPulse is a developer-focused uptime monitoring product designed for solo builders, indie hackers, and individual developers who deploy and maintain their own SaaS applications, APIs, and side projects.
+DownAlert is a developer-focused uptime monitoring product designed for solo builders, indie hackers, and individual developers who deploy and maintain their own SaaS applications, APIs, and side projects.
 
 The product is built around one principle: **you should know immediately when something breaks without having to manage an enterprise-grade monitoring platform.**
 
@@ -18,7 +17,7 @@ The product is built around one principle: **you should know immediately when so
 
 ---
 
-## Why Use DevPulse?
+## Why Use DownAlert?
 
 - **Built for Solo Developers**  - Designed specifically for solo builders, indie hackers, and small teams.
 - **Know When Something Breaks**  - Get notified when your website, API, or application goes down instead of discovering it from users.
@@ -28,7 +27,7 @@ The product is built around one principle: **you should know immediately when so
 - **No Enterprise Feature Bloat**  - Get the monitoring features you actually need without complex incident-management or team workflows.
 - **Affordable as You Grow**  - Start with a genuinely useful free tier and upgrade only when you need advanced capabilities.
 
-> **Your users shouldn't be the ones telling you your application is down. DevPulse should.**
+> **Your users shouldn't be the ones telling you your application is down. DownAlert should.**
 
 ---
 
@@ -60,7 +59,7 @@ The product is built around one principle: **you should know immediately when so
 
 ## Future Expansion
 
-Once the core monitoring engine and alerting workflow are validated, DevPulse can expand while maintaining its simplicity-first philosophy.
+Once the core monitoring engine and alerting workflow are validated, DownAlert can expand while maintaining its simplicity-first philosophy.
 
 Potential future capabilities include:
 
@@ -75,7 +74,7 @@ Potential future capabilities include:
 
 ## Built By
 
-DevPulse is built by:
+DownAlert is built by:
 
 ### Nitin Yadav
 
