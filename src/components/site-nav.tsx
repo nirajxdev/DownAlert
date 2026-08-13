@@ -19,17 +19,19 @@ export function SiteNav() {
           <Link href="#" className="hover:text-heading transition-colors">
             Docs
           </Link>
-          <Link href="#" className="hover:text-heading transition-colors">
-            Login
-          </Link>
         </div>
 
-        <Link
-          href="/signup"
-          className="btn-primary px-5 py-2.5 text-sm"
-        >
-          Get started
-        </Link>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="#"
+            className="rounded-full border border-border px-4 sm:px-5 py-2.5 text-sm font-semibold text-heading hover:bg-background transition-colors"
+          >
+            Login
+          </Link>
+          <Link href="/signup" className="btn-primary px-4 sm:px-5 py-2.5 text-sm">
+            Get started
+          </Link>
+        </div>
       </nav>
     </div>
   );

@@ -106,7 +106,7 @@ export default function Home() {
 
         <SiteNav />
 
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-start px-6 pb-32 pt-16 lg:pt-20 text-center">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-16 text-center">
           <div className="animate-fade-in-up">
             <span className="inline-flex items-center gap-2 rounded-full bg-white/95 border border-border px-4 py-1.5 text-xs font-medium text-heading shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
@@ -121,8 +121,8 @@ export default function Home() {
           </h1>
 
           <p className="animate-fade-in-up-2 mt-8 max-w-2xl text-lg sm:text-xl text-foreground leading-relaxed">
-            Uptime monitoring built for solo developers — simple to set up, free
-            even once you&apos;re making money.
+            Paste your URL. We ping it around the clock. Get a clear email when
+            it&apos;s down — not a cryptic status code.
           </p>
 
           <div className="animate-fade-in-up-3 mt-10 flex flex-col sm:flex-row items-center justify-center gap-6">
