@@ -1,0 +1,7 @@
+{
+  "name": "worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Checking engine — scheduler + HTTP checker",
+  "type": "module"
+}

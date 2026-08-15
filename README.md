@@ -42,6 +42,26 @@ The product is built around one principle: **you should know immediately when so
 
 ---
 
+## Project structure
+
+```
+DownAlert/
+  frontend/   # Next.js — dashboard, landing, auth screens
+  backend/    # Node.js + Express API (routes, services, db)
+  worker/     # Checking engine — scheduler + HTTP checker
+```
+
+Run the UI from `frontend/`:
+
+```bash
+cd frontend
+npm run dev
+```
+
+`backend/` and `worker/` are placeholders until the API and checker are added. Each folder has its own `package.json`.
+
+---
+
 ## Tech stack
 
 | Layer | Tech |
