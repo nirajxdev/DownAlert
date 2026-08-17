@@ -1,12 +1,15 @@
 import express from 'express';
 import pool from './db/index.js';
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
+app.use(express.json());
+app.use("/api/auth", authRoutes);
 
 app.get("/api/health", async (req, res) => {
     try {
         const result = await pool.query("SELECT NOW()");
-
+        console.log("DATABASE CONNECTED");
         res.status(200).json({
             success: true,
             message: "DownAlert API is running",
@@ -15,7 +18,6 @@ app.get("/api/health", async (req, res) => {
         });
     } catch (error) {
         console.error("Database connection error", error);
-
         res.status(500).json({
             success: false,
             message: "Database connection error",
