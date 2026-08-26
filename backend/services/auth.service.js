@@ -22,7 +22,8 @@ const generateToken = (user) => {
 export const signup = async (email, password) => {
   const normalizedEmail = email.trim().toLowerCase();
   const existingUser = await pool.query(
-    "SELECT id FROM users WHERE email = $1", [normalizedEmail]
+    "SELECT id FROM users WHERE email = $1",
+    [normalizedEmail]
   );
   if (existingUser.rows.length > 0) {
     throw new Error("User already exists");
@@ -38,7 +39,14 @@ export const signup = async (email, password) => {
     `,
     [normalizedEmail, passwordHash]
   );
-  return result.rows[0];
+
+  const user = result.rows[0];
+  const token = generateToken(user);
+
+  return {
+    user,
+    token,
+  };
 };
 
 export const login = async (email, password) => {
@@ -73,4 +81,17 @@ export const login = async (email, password) => {
     },
     token,
   };
+};
+
+export const getUserById = async (userId) => {
+  const result = await pool.query(
+    "SELECT id, email, plan, created_at, updated_at FROM users WHERE id = $1",
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error("User not found");
+  }
+
+  return result.rows[0];
 };
