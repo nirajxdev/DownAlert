@@ -95,3 +95,38 @@ ON alert_logs(monitor_id, sent_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_users_email
 ON users(email);
+
+-- ALERTS (user-defined notification rules per monitor)
+CREATE TABLE IF NOT EXISTS alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    monitor_id UUID NOT NULL,
+    channel VARCHAR(20) NOT NULL DEFAULT 'EMAIL' CHECK (channel IN ('EMAIL')),
+    target VARCHAR(255) NOT NULL,
+    on_down BOOLEAN NOT NULL DEFAULT TRUE,
+    on_recovery BOOLEAN NOT NULL DEFAULT TRUE,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_alerts_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_alerts_monitor
+        FOREIGN KEY (monitor_id)
+        REFERENCES monitors(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT target_not_empty CHECK (char_length(trim(target)) > 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_alerts_user_monitor_target
+ON alerts(user_id, monitor_id, target);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_user_id
+ON alerts(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_monitor_id
+ON alerts(monitor_id);
