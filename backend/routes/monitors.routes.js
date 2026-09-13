@@ -4,6 +4,7 @@ import {
   createMonitorSchema,
   updateMonitorSchema,
   monitorIdParamSchema,
+  checksQuerySchema,
 } from "../validators/monitor.validator.js";
 import {
   createMonitor,
@@ -11,6 +12,8 @@ import {
   getMonitorById,
   updateMonitor,
   deleteMonitor,
+  listChecks,
+  runManualCheck,
 } from "../services/monitor.service.js";
 
 const router = express.Router();
@@ -84,6 +87,97 @@ router.get("/", async (req, res) => {
     });
   } catch (error) {
     console.error("List monitors error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /api/monitors/:id/checks - Check history for one of my monitors
+router.get("/:id/checks", async (req, res) => {
+  const paramValidation = monitorIdParamSchema.safeParse(req.params);
+
+  if (!paramValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid monitor ID",
+      errors: paramValidation.error.issues,
+    });
+  }
+
+  const queryValidation = checksQuerySchema.safeParse(req.query);
+
+  if (!queryValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid query parameters",
+      errors: queryValidation.error.issues,
+    });
+  }
+
+  try {
+    const { checks, pagination } = await listChecks(
+      req.user.id,
+      paramValidation.data.id,
+      queryValidation.data
+    );
+
+    return res.status(200).json({
+      success: true,
+      checks,
+      pagination,
+    });
+  } catch (error) {
+    console.error("List checks error:", error);
+
+    if (error.message === "Monitor not found") {
+      return res.status(404).json({
+        success: false,
+        message: "Monitor not found",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/monitors/:id/check - Run an immediate probe for one of my monitors.
+// Records the result in checks and updates the monitor status. Does not send
+// email alerts — the worker handles DOWN/RECOVERY notifications on transitions.
+router.post("/:id/check", async (req, res) => {
+  const paramValidation = monitorIdParamSchema.safeParse(req.params);
+
+  if (!paramValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid monitor ID",
+      errors: paramValidation.error.issues,
+    });
+  }
+
+  try {
+    const { check, monitor } = await runManualCheck(req.user.id, paramValidation.data.id);
+
+    return res.status(201).json({
+      success: true,
+      message: "Check completed successfully",
+      check,
+      monitor,
+    });
+  } catch (error) {
+    console.error("Manual check error:", error);
+
+    if (error.message === "Monitor not found") {
+      return res.status(404).json({
+        success: false,
+        message: "Monitor not found",
+      });
+    }
 
     return res.status(500).json({
       success: false,

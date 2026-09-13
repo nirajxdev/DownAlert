@@ -59,3 +59,17 @@ export const monitorIdParamSchema = z.object({
     .string({ required_error: "Monitor ID is required" })
     .uuid("Monitor ID must be a valid UUID"),
 });
+
+export const checksQuerySchema = z.object({
+  limit: z.coerce
+    .number({ invalid_type_error: "Limit must be a number" })
+    .int("Limit must be an integer")
+    .min(1, "Limit must be at least 1")
+    .max(100, "Limit must be at most 100")
+    .default(50),
+  offset: z.coerce
+    .number({ invalid_type_error: "Offset must be a number" })
+    .int("Offset must be an integer")
+    .min(0, "Offset must be at least 0")
+    .default(0),
+});

@@ -212,3 +212,80 @@ export const deleteMonitor = async (userId, monitorId) => {
   }
   return { id: result.rows[0].id };
 };
+
+const CHECK_COLUMNS = `
+  id, monitor_id, status_code, response_time_ms,
+  success, error_type, checked_at
+`;
+
+export const listChecks = async (userId, monitorId, { limit = 50, offset = 0 } = {}) => {
+  // Ownership check first — never expose another user's check history.
+  await getMonitorById(userId, monitorId);
+
+  const [checksResult, countResult] = await Promise.all([
+    pool.query(
+      `
+        SELECT ${CHECK_COLUMNS}
+        FROM checks
+        WHERE monitor_id = $1
+        ORDER BY checked_at DESC
+        LIMIT $2 OFFSET $3
+      `,
+      [monitorId, limit, offset]
+    ),
+    pool.query("SELECT COUNT(*)::int AS total FROM checks WHERE monitor_id = $1", [
+      monitorId,
+    ]),
+  ]);
+
+  return {
+    checks: checksResult.rows,
+    pagination: { total: countResult.rows[0].total, limit, offset },
+  };
+};
+
+export const runManualCheck = async (userId, monitorId) => {
+  // Ownership check first — only the owner can trigger a probe.
+  const monitor = await getMonitorById(userId, monitorId);
+
+  const probe = await checkUrl(monitor.url);
+  const success = probe.status === "UP";
+  // error_type is VARCHAR(50) — truncate long transport messages.
+  const errorType = probe.error ? String(probe.error).slice(0, 50) : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const checkResult = await client.query(
+      `
+        INSERT INTO checks (monitor_id, status_code, response_time_ms, success, error_type)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING ${CHECK_COLUMNS}
+      `,
+      [monitorId, probe.statusCode, probe.responseTime, success, errorType]
+    );
+
+    const monitorResult = await client.query(
+      `
+        UPDATE monitors
+        SET current_status = $1,
+            consecutive_failures = CASE WHEN $2 THEN 0 ELSE consecutive_failures + 1 END,
+            last_checked_at = NOW(),
+            next_check_at = NOW() + (check_interval_seconds || ' seconds')::interval,
+            updated_at = NOW()
+        WHERE id = $3 AND user_id = $4
+        RETURNING ${MONITOR_COLUMNS}
+      `,
+      [probe.status, success, monitorId, userId]
+    );
+
+    await client.query("COMMIT");
+    return { check: checkResult.rows[0], monitor: monitorResult.rows[0] };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+};
