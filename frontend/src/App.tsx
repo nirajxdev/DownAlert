@@ -14,7 +14,7 @@ import ScrollProgress from './components/ScrollProgress';
 import Dashboard from './components/Dashboard';
 import GlobalNodeDistribution from './components/GlobalNodeDistribution';
 import Testimonials from './components/Testimonials';
-import { type User, store } from './lib/store';
+import { type User, me, logout, getToken } from './lib/api';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -24,9 +24,18 @@ export default function App() {
   const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [infoModalPage, setInfoModalPage] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
+  // Restore session from saved token on boot.
   useEffect(() => {
-    store.init();
+    if (!getToken()) {
+      setAuthChecked(true);
+      return;
+    }
+    me()
+      .then(setUser)
+      .catch(() => logout())
+      .finally(() => setAuthChecked(true));
   }, []);
 
   const showNotification = (msg: string) => {
@@ -55,11 +64,16 @@ export default function App() {
     }
   };
 
+  if (!authChecked) return null;
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+    showNotification('Successfully logged out.');
+  };
+
   if (user) {
-    return <Dashboard user={user} onUpdateUser={setUser} onLogout={() => {
-      setUser(null);
-      showNotification('Successfully logged out.');
-    }} />;
+    return <Dashboard user={user} onUpdateUser={setUser} onLogout={handleLogout} />;
   }
 
   return (

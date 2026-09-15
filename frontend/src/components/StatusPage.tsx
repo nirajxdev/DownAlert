@@ -1,15 +1,16 @@
 import React from 'react';
 import { CheckCircle2, ArrowLeft, Clock, AlertTriangle } from 'lucide-react';
-import PerformanceChart from './PerformanceChart';
-import { type Monitor } from '../lib/store';
+import PerformanceChart, { type ChartPoint } from './PerformanceChart';
+import { type Monitor } from '../lib/api';
 import { motion } from 'motion/react';
 
 interface StatusPageProps {
   onBack: () => void;
   monitors: Monitor[];
+  points?: ChartPoint[];
 }
 
-export default function StatusPage({ onBack, monitors }: StatusPageProps) {
+export default function StatusPage({ onBack, monitors, points = [] }: StatusPageProps) {
   // Mock data for the 90-day uptime bar
   const generateUptimeDays = () => {
     return Array.from({ length: 90 }).map((_, i) => {
@@ -113,7 +114,13 @@ export default function StatusPage({ onBack, monitors }: StatusPageProps) {
       {/* System Metrics */}
       <div>
         <h3 className="text-lg font-semibold text-[#111111] mb-4">System Metrics</h3>
-        <PerformanceChart />
+        {points.length > 0 ? (
+          <PerformanceChart points={points} />
+        ) : (
+          <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl p-6 text-center text-sm text-[#6B6B6B]">
+            No check data yet.
+          </div>
+        )}
       </div>
 
       {/* Past Incidents */}

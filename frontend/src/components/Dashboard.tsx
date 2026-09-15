@@ -1,14 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Activity, Search, Bell, Plus, MoreHorizontal, CheckCircle2, 
-  LayoutDashboard, Server, AlertTriangle, Radio, Settings, LogOut, 
-  Shield, Menu, X, ArrowUpRight, ArrowLeft, ChevronDown, Pencil, Trash2, Globe, TrendingDown, TrendingUp, Zap
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Activity, Search, Bell, Plus, MoreHorizontal, CheckCircle2,
+  LayoutDashboard, Server, AlertTriangle, Radio, Settings, LogOut,
+  Shield, Menu, X, ArrowUpRight, ArrowLeft, ChevronDown, Pencil, Trash2, Globe, TrendingDown, TrendingUp, Zap,
+  RefreshCw, Clock, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import GlobalNodeDistribution from './GlobalNodeDistribution';
 import PerformanceChart from './PerformanceChart';
 import StatusPage from './StatusPage';
-import { store, type User, type Monitor } from '../lib/store';
+import {
+  listMonitors,
+  createMonitor,
+  updateMonitor,
+  deleteMonitor,
+  runCheck,
+  listChecks,
+  listAlerts,
+  createAlert,
+  updateAlert,
+  deleteAlert,
+  sendTestAlert,
+  hydrateMonitor,
+  displayName,
+  isPaid,
+  maxMonitors,
+  defaultInterval,
+  intervalLabel,
+  friendlyApiError,
+  ApiError,
+  type User,
+  type Monitor,
+  type ApiAlert,
+  type ApiCheck,
+} from '../lib/api';
 
 interface DashboardProps {
   user: User;
@@ -35,19 +60,19 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
 
   if (!isOpen) return null;
 
-  const maxMonitors = user.plan === 'free' ? 1 : 5;
-  const limitReached = currentMonitorsCount >= maxMonitors;
-  const checkInterval = user.plan === 'free' ? '5-minute' : '1-minute';
+  const monitorLimit = maxMonitors(user.plan);
+  const limitReached = currentMonitorsCount >= monitorLimit;
+  const checkInterval = intervalLabel(user.plan);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); // Prevent page reload on form submit
-    
+
     // Guard clause: do nothing if input is empty, plan limits are hit, or already verifying
     if (!url || limitReached || isVerifying) return;
     setError(null); // Reset any previous error states
 
     let formattedUrl = url.trim(); // Remove whitespace
-    
+
     // Strict Regex URL validation to ensure proper formatting
     const urlRegex = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
     if (!urlRegex.test(formattedUrl)) {
@@ -59,7 +84,7 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
     if (!formattedUrl.startsWith('http')) {
       formattedUrl = `https://${formattedUrl}`;
     }
-    
+
     // Auto-extract the hostname from the URL to use as a default display name
     let name = 'Website';
     try {
@@ -72,62 +97,43 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
 
     // Enter verification state (shows loading spinner)
     setIsVerifying(true);
-    
-    // Simulate connection check by attempting a no-cors fetch
-    // Note: Since browsers don't give status codes for opaque responses,
-    // this mainly tests if the domain is resolvable (DNS) and reachable.
+
+    // Lightweight reachability pre-check (opaque response only proves DNS+TCP).
+    // The authoritative result comes from the backend probe below.
     try {
       const controller = new AbortController();
-      // Set a strict 5-second timeout. If the server doesn't respond, it aborts.
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      // Perform the HEAD request
-      await fetch(formattedUrl, { 
-        mode: 'no-cors', 
+
+      await fetch(formattedUrl, {
+        mode: 'no-cors',
         signal: controller.signal,
         method: 'HEAD'
       });
-      clearTimeout(timeoutId); // Clear the timeout if the request succeeds
+      clearTimeout(timeoutId);
     } catch (err: any) {
-      // Check if it failed due to our artificial 5-second timeout
       if (err.name === 'AbortError') {
         setError('Connection timed out. Please check if the website is online.');
       } else {
-        // Generic failure (e.g., DNS resolution failed, connection refused)
         setError('Unable to reach website. Please check the URL and try again.');
       }
       setIsVerifying(false);
-      return; // Stop execution; do not save monitor
+      return;
     }
 
-    // Verification succeeded
-    setIsVerifying(false);
-
-    // =====================================================================
-    // TODO (API/DATABASE): CREATE MONITOR IN DATABASE
-    // Send the verified URL to your backend to create the monitor record
-    // and begin the background polling engine.
-    // Example: 
-    // const response = await api.post('/monitors', { url: formattedUrl, name, interval: checkInterval });
-    // const newMonitor = response.data;
-    // =====================================================================
-
-    // Mock local creation
-    const newMonitor: Monitor = {
-      id: `mon-${Date.now()}`,
-      userId: user.id,
-      name,
-      url: formattedUrl,
-      type: 'Website',
-      status: 'operational',
-      uptime: '100%',
-      response: '—', // No response time data yet
-      lastCheck: 'Just now'
-    };
-
-    store.saveMonitor(newMonitor); // Save to local storage
-    onSave(newMonitor); // Trigger parent callback to update React state array
-    setUrl(''); // Clear the input field for the next entry
+    // Create the monitor on the backend — this starts real scheduled checks.
+    try {
+      const newMonitor = await createMonitor({
+        name,
+        url: formattedUrl,
+        check_interval_seconds: defaultInterval(user.plan),
+      });
+      onSave(newMonitor);
+      setUrl('');
+    } catch (err) {
+      setError(friendlyApiError(err));
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -146,7 +152,7 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
             </button>
           </div>
           <p className="text-[#6B6B6B] text-sm mb-6">
-            Enter the website link below. Your <span className="font-semibold text-[#111111] capitalize">{user.plan}</span> plan includes up to {maxMonitors} monitors with {checkInterval} check intervals.
+            Enter the website link below. Your <span className="font-semibold text-[#111111] capitalize">{user.plan}</span> plan includes up to {monitorLimit} monitors with {checkInterval} check intervals.
           </p>
 
           {limitReached ? (
@@ -157,7 +163,7 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
               <div>
                 <h4 className="font-semibold text-[#111111]">Limit Reached</h4>
                 <p className="text-sm text-[#6B6B6B] mt-1">
-                  You are currently monitoring {currentMonitorsCount} of {maxMonitors} websites. 
+                  You are currently monitoring {currentMonitorsCount} of {monitorLimit} websites. 
                   {user.plan === 'free' ? ' Upgrade to Pro to add more monitors and get 1-minute checks.' : ' You have reached the maximum number of monitors for the Pro plan.'}
                 </p>
               </div>
@@ -206,15 +212,142 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
   );
 };
 
-const MonitorRow = ({ monitor, onEdit, onDelete }: { key?: React.Key, monitor: Monitor, onEdit: (m: Monitor) => void, onDelete: (m: Monitor) => void }) => {
+const EditMonitorModal = ({ monitor, user, onClose, onSave }: { monitor: Monitor, user: User, onClose: () => void, onSave: (m: Monitor) => void }) => {
+  const [name, setName] = useState(monitor.name);
+  const [url, setUrl] = useState(monitor.url);
+  const [interval, setInterval] = useState(String(monitor.checkInterval));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const paid = isPaid(user.plan);
+  const minSecs = paid ? 60 : 300;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const patch: { name?: string; url?: string; check_interval_seconds?: number } = {};
+    if (name.trim() && name.trim() !== monitor.name) patch.name = name.trim();
+    if (url.trim() && url.trim() !== monitor.url) patch.url = url.trim();
+    const secs = parseInt(interval);
+    if (!Number.isNaN(secs) && secs !== monitor.checkInterval) {
+      if (secs < minSecs || secs > 86400) {
+        setError(`Check interval must be between ${minSecs} and 86400 seconds on your plan.`);
+        return;
+      }
+      patch.check_interval_seconds = secs;
+    }
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await updateMonitor(monitor.id, patch);
+      onSave(updated);
+      onClose();
+    } catch (err) {
+      setError(friendlyApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#080D18]/80 backdrop-blur-sm font-sans">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-[#E5E5E5]"
+      >
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-[#111111]">Edit Monitor</h3>
+            <button onClick={onClose} disabled={saving} className="text-[#6B6B6B] hover:text-[#111111] transition-colors p-1 disabled:opacity-50">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-xs font-medium text-[#111111] mb-1.5">Name</label>
+              <input
+                type="text"
+                required
+                disabled={saving}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-4 py-3 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF] shadow-sm disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#111111] mb-1.5">Website URL</label>
+              <input
+                type="text"
+                required
+                disabled={saving}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-4 py-3 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF] shadow-sm disabled:opacity-50"
+              />
+              <p className="text-xs text-[#A3A3A3] mt-1.5">Changing the URL resets status to pending and re-checks immediately.</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#111111] mb-1.5">Check interval (seconds)</label>
+              <input
+                type="number"
+                disabled={saving}
+                value={interval}
+                min={minSecs}
+                max={86400}
+                onChange={(e) => setInterval(e.target.value)}
+                className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-4 py-3 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF] shadow-sm disabled:opacity-50"
+              />
+              <p className="text-xs text-[#A3A3A3] mt-1.5">Minimum {minSecs}s on your plan.</p>
+            </div>
+            {error && (
+              <p className="text-[#EF4444] text-xs flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> {error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full bg-[#111111] hover:bg-[#000000] text-white text-sm font-medium px-6 py-3 rounded-md transition-colors shadow-sm flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {saving ? <><Activity className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const RuleToggle = ({ checked, onChange, disabled, label }: { checked: boolean, onChange: (v: boolean) => void, disabled?: boolean, label: string }) => (
+  <label className="relative inline-flex items-center cursor-pointer" title={label}>
+    <input
+      type="checkbox"
+      className="sr-only peer"
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+    <div className="w-11 h-6 bg-[#E5E5E5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981] peer-disabled:opacity-50"></div>
+  </label>
+);
+
+const MonitorRow = ({ monitor, onEdit, onDelete, onCheck, checking }: { key?: React.Key, monitor: Monitor, onEdit: (m: Monitor) => void, onDelete: (m: Monitor) => void, onCheck: (m: Monitor) => void, checking: boolean }) => {
   const latency = parseInt(monitor.response);
-  const isOffline = monitor.status === 'down' || (monitor.response === '—' && monitor.status !== 'operational');
-  
+  const isPending = monitor.status === 'pending';
+  const isOffline = monitor.status === 'down';
+
   let StatusIcon = CheckCircle2;
   let colorClass = 'text-[#10B981]';
   let bgClass = 'bg-[#10B981]/10';
-  
-  if (isOffline || latency >= 800) {
+
+  if (isPending) {
+    StatusIcon = Clock;
+    colorClass = 'text-[#6B6B6B]';
+    bgClass = 'bg-[#6B6B6B]/10';
+  } else if (isOffline || latency >= 800) {
     StatusIcon = AlertTriangle;
     colorClass = 'text-[#EF4444]';
     bgClass = 'bg-[#EF4444]/10';
@@ -241,8 +374,16 @@ const MonitorRow = ({ monitor, onEdit, onDelete }: { key?: React.Key, monitor: M
       <td className="px-4 py-4 sm:py-3 hidden xl:table-cell text-[#6B6B6B] text-xs">{monitor.lastCheck}</td>
       <td className="px-4 py-4 sm:py-3 text-right">
         <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          <button 
-            onClick={(e) => { e.stopPropagation(); onEdit(monitor); }} 
+          <button
+            onClick={(e) => { e.stopPropagation(); onCheck(monitor); }}
+            disabled={checking}
+            className="text-[#6B6B6B] hover:text-[#10B981] p-2 sm:p-1.5 rounded-md hover:bg-[#10B981]/10 transition-colors disabled:opacity-50"
+            title="Run check now"
+          >
+            <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(monitor); }}
             className="text-[#6B6B6B] hover:text-[#3154FF] p-2 sm:p-1.5 rounded-md hover:bg-[#3154FF]/10 transition-colors" 
             title="Edit Monitor"
           >
@@ -261,102 +402,246 @@ const MonitorRow = ({ monitor, onEdit, onDelete }: { key?: React.Key, monitor: M
   );
 };
 
-export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardProps & { onUpdateUser?: (u: User) => void }) {
+export interface Incident {
+  id: string;
+  monitorId: string;
+  monitorName: string;
+  startedAt: string;
+  endedAt: string | null;
+  checkCount: number;
+}
+
+const ONBOARD_KEY = (userId: string) => `downalert_onboarded_${userId}`;
+
+const deriveIncidents = (monitors: Monitor[], checksById: Record<string, ApiCheck[]>): Incident[] => {
+  const incidents: Incident[] = [];
+  for (const m of monitors) {
+    const checks = [...(checksById[m.id] ?? [])].sort(
+      (a, b) => new Date(a.checked_at).getTime() - new Date(b.checked_at).getTime()
+    );
+    let runStart: ApiCheck | null = null;
+    let runCount = 0;
+    const flush = (end: ApiCheck | null) => {
+      if (runStart) {
+        incidents.push({
+          id: `${m.id}-${runStart.id}`,
+          monitorId: m.id,
+          monitorName: m.name,
+          startedAt: runStart.checked_at,
+          endedAt: end && end.success ? end.checked_at : null,
+          checkCount: runCount,
+        });
+      }
+      runStart = null;
+      runCount = 0;
+    };
+    for (const c of checks) {
+      if (!c.success) {
+        if (!runStart) runStart = c;
+        runCount += 1;
+      } else {
+        flush(c);
+      }
+    }
+    flush(null);
+  }
+  return incidents.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+};
+
+export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdateUser?: (u: User) => void }) {
   const [activeRoute, setActiveRoute] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
-  const [editingMonitor, setEditingMonitor] = useState<Monitor | null>(null);
+  const [checksByMonitor, setChecksByMonitor] = useState<Record<string, ApiCheck[]>>({});
+  const [alerts, setAlerts] = useState<ApiAlert[]>([]);
+  const [loadingMonitors, setLoadingMonitors] = useState(true);
+  const [monitorsError, setMonitorsError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Monitor | null>(null);
   const [monitorToDelete, setMonitorToDelete] = useState<Monitor | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [checkingIds, setCheckingIds] = useState<string[]>([]);
 
   const [isTestingAlert, setIsTestingAlert] = useState(false);
   const [testSuccess, setTestSuccess] = useState(false);
-  
-  // Local state for Webhook History
-  const [webhookLogs, setWebhookLogs] = useState<{ id: string, timestamp: string, event: string, status: 'success' | 'error', response: string, code: number }[]>([]);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [alertFormTarget, setAlertFormTarget] = useState<{ [monitorId: string]: string }>({});
+  const [savingAlertId, setSavingAlertId] = useState<string | null>(null);
 
-  const [showOnboarding, setShowOnboarding] = useState(!user.hasCompletedOnboarding);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try {
+      return !localStorage.getItem(ONBOARD_KEY(user.id));
+    } catch {
+      return true;
+    }
+  });
   const [onboardingStep, setOnboardingStep] = useState(1);
 
   const completeOnboarding = () => {
     setShowOnboarding(false);
-    const updatedUser = { ...user, hasCompletedOnboarding: true };
-    store.saveUser(updatedUser);
-  };
-
-  // Trigger side-effects when the 'user' prop changes
-  useEffect(() => {
-    // =====================================================================
-    // TODO (API/DATABASE): FETCH MONITORS ON MOUNT OR USER CHANGE
-    // Replace store.getMonitors with an API call to fetch monitors for this user.
-    // Example: 
-    // const fetchMonitors = async () => {
-    //   const response = await fetch(`/api/monitors?userId=${user.id}`);
-    //   const data = await response.json();
-    //   setMonitors(data);
-    // };
-    // fetchMonitors();
-    // =====================================================================
-    // Fetch monitors from local store for now
-    setMonitors(store.getMonitors(user.role === 'admin' ? undefined : user.id));
-  }, [user]);
-
-  const handleDeleteMonitor = () => {
-    if (monitorToDelete) {
-      // =====================================================================
-      // TODO (API/DATABASE): DELETE MONITOR FROM DATABASE
-      // Send a DELETE request to your backend to remove the monitor record.
-      // Example: await fetch(`/api/monitors/${monitorToDelete.id}`, { method: 'DELETE' });
-      // =====================================================================
-      // Local deletion logic:
-      store.deleteMonitor(monitorToDelete.id); // Remove from localStorage
-      setMonitors(monitors.filter(m => m.id !== monitorToDelete.id)); // Update React state to remove from UI
-      setMonitorToDelete(null); // Close the confirmation modal
+    try {
+      localStorage.setItem(ONBOARD_KEY(user.id), '1');
+    } catch {
+      /* onboarding flag is best-effort */
     }
   };
 
-  const handleTestAlert = () => {
-    // Put the test button into a loading/verifying state
+  const handleAuthError = (err: unknown) => {
+    if (err instanceof ApiError && err.status === 401) {
+      onLogout();
+      return true;
+    }
+    return false;
+  };
+
+  const refreshChecksFor = async (monitorId: string, base: Monitor): Promise<Monitor> => {
+    const checks = await listChecks(monitorId, 50);
+    setChecksByMonitor(prev => ({ ...prev, [monitorId]: checks }));
+    return hydrateMonitor(base, checks);
+  };
+
+  const fetchAll = async () => {
+    setLoadingMonitors(true);
+    setMonitorsError(null);
+    try {
+      const [fetchedMonitors, fetchedAlerts] = await Promise.all([listMonitors(), listAlerts()]);
+      const hydrated = await Promise.all(
+        fetchedMonitors.map(async (m) => {
+          try {
+            const checks = await listChecks(m.id, 50);
+            setChecksByMonitor(prev => ({ ...prev, [m.id]: checks }));
+            return hydrateMonitor(m, checks);
+          } catch {
+            return m;
+          }
+        })
+      );
+      setMonitors(hydrated);
+      setAlerts(fetchedAlerts);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setMonitorsError(friendlyApiError(err));
+      }
+    } finally {
+      setLoadingMonitors(false);
+    }
+  };
+
+  // Fetch monitors + alerts + check history when the user changes.
+  useEffect(() => {
+    fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+
+  const handleDeleteMonitor = async () => {
+    if (!monitorToDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteMonitor(monitorToDelete.id);
+      setMonitors(monitors.filter(m => m.id !== monitorToDelete.id));
+      setAlerts(alerts.filter(a => a.monitor_id !== monitorToDelete.id));
+      setMonitorToDelete(null);
+      setNotice(`Monitor "${monitorToDelete.name}" deleted.`);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setNotice(friendlyApiError(err));
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRunCheck = async (monitor: Monitor) => {
+    if (checkingIds.includes(monitor.id)) return;
+    setCheckingIds(prev => [...prev, monitor.id]);
+    try {
+      const updated = await runCheck(monitor.id);
+      const hydrated = await refreshChecksFor(monitor.id, updated);
+      setMonitors(prev => prev.map(m => (m.id === monitor.id ? hydrated : m)));
+      setNotice(`Check completed for "${monitor.name}".`);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setNotice(friendlyApiError(err));
+      }
+    } finally {
+      setCheckingIds(prev => prev.filter(id => id !== monitor.id));
+    }
+  };
+
+  const handleTestAlert = async () => {
+    if (isTestingAlert) return;
     setIsTestingAlert(true);
     setTestSuccess(false);
-    
-    // Simulate network delay for sending a notification payload
-    setTimeout(() => {
-      // =====================================================================
-      // TODO (API/DATABASE): TRIGGER TEST NOTIFICATION IN BACKEND
-      // Send a request to your API to dispatch a real test email/webhook.
-      // Example: await fetch('/api/alerts/test', { method: 'POST', body: JSON.stringify({ userId: user.id }) });
-      // =====================================================================
-      
-      setIsTestingAlert(false); // Stop loading spinner
-      setTestSuccess(true); // Show success checkmark
-      
-      // Append a mock successful webhook log entry to the UI table state
-      const newLog = {
-        id: `wh-${Date.now()}`,
-        timestamp: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date()),
-        event: 'test.notification',
-        status: 'success' as const,
-        response: '{success: true}',
-        code: 200
-      };
-      // Prepend the new log to the top of the array
-      setWebhookLogs(prev => [newLog, ...prev]);
+    setTestError(null);
+    try {
+      await sendTestAlert(user.email);
+      setTestSuccess(true);
+      setTimeout(() => setTestSuccess(false), 4000);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setTestError(friendlyApiError(err));
+      }
+    } finally {
+      setIsTestingAlert(false);
+    }
+  };
 
-      // Remove the success checkmark after 3 seconds
-      setTimeout(() => setTestSuccess(false), 3000);
-    }, 1500);
+  const handleCreateAlert = async (monitorId: string) => {
+    const target = (alertFormTarget[monitorId] ?? user.email).trim();
+    if (!target) return;
+    setSavingAlertId(monitorId);
+    try {
+      const alert = await createAlert({ monitor_id: monitorId, target });
+      setAlerts(prev => [alert, ...prev]);
+      setNotice(`Alert created for ${target}.`);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setNotice(friendlyApiError(err));
+      }
+    } finally {
+      setSavingAlertId(null);
+    }
+  };
+
+  const handleToggleAlert = async (alert: ApiAlert, patch: { is_enabled?: boolean; on_down?: boolean; on_recovery?: boolean }) => {
+    setSavingAlertId(alert.id);
+    try {
+      const updated = await updateAlert(alert.id, patch);
+      setAlerts(prev => prev.map(a => (a.id === alert.id ? updated : a)));
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setNotice(friendlyApiError(err));
+      }
+    } finally {
+      setSavingAlertId(null);
+    }
+  };
+
+  const handleDeleteAlert = async (alert: ApiAlert) => {
+    setSavingAlertId(alert.id);
+    try {
+      await deleteAlert(alert.id);
+      setAlerts(prev => prev.filter(a => a.id !== alert.id));
+      setNotice('Alert rule deleted.');
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setNotice(friendlyApiError(err));
+      }
+    } finally {
+      setSavingAlertId(null);
+    }
   };
 
   // Calculate stats
   const operationalCount = monitors.filter(m => m.status === 'operational').length;
-  const degradedCount = monitors.filter(m => m.status === 'degraded').length;
+  const pendingCount = monitors.filter(m => m.status === 'pending').length;
   const downCount = monitors.filter(m => m.status === 'down').length;
-  
-  const totalMonitors = monitors.length;
-  const isHealthy = downCount === 0 && degradedCount === 0;
 
-  let overallUptime = '100%';
+  const totalMonitors = monitors.length;
+  const isHealthy = downCount === 0;
+
+  let overallUptime = '—';
   if (totalMonitors > 0) {
     const uptimeVals = monitors.map(m => parseFloat(m.uptime.replace('%', ''))).filter(n => !isNaN(n));
     if (uptimeVals.length > 0) {
@@ -365,8 +650,42 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
     }
   }
 
-  // Extract name for greeting
-  const capitalizedName = user.name || user.email.split('@')[0].split('.')[0];
+  let avgResponse: string = '—';
+  {
+    const latencies = monitors
+      .map(m => parseInt(m.response))
+      .filter(n => !isNaN(n));
+    if (latencies.length > 0) {
+      avgResponse = `${Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)}ms`;
+    }
+  }
+
+  const incidents = useMemo(
+    () => deriveIncidents(monitors, checksByMonitor),
+    [monitors, checksByMonitor]
+  );
+  const activeIncidents = incidents.filter(i => i.endedAt === null);
+
+  const chartPoints = useMemo(() => {
+    const all: ApiCheck[] = (Object.values(checksByMonitor) as ApiCheck[][]).reduce(
+      (acc, arr) => acc.concat(arr),
+      []
+    );
+    return all
+      .filter(c => c.response_time_ms !== null)
+      .sort((a, b) => new Date(a.checked_at).getTime() - new Date(b.checked_at).getTime())
+      .slice(-24)
+      .map(c => ({
+        time: new Date(c.checked_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        latency: c.response_time_ms as number,
+      }));
+  }, [checksByMonitor]);
+
+  // Display name is derived from the email address (backend stores no name).
+  const capitalizedName = displayName(user.email);
+  const paidPlan = isPaid(user.plan);
+  const planLimit = maxMonitors(user.plan);
+  const planIntervalLabel = intervalLabel(user.plan);
 
   const NavItem = ({ id, icon: Icon, label, badge }: { id: string, icon: any, label: string, badge?: string }) => (
     <button
@@ -440,59 +759,42 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
             </nav>
           </div>
 
-          {user.role === 'admin' && (
-            <div>
-              <div className="px-3 mb-2 text-xs font-semibold text-[#6B6B6B] uppercase tracking-wider">Platform</div>
-              <nav className="space-y-0.5">
-                <NavItem id="admin" icon={Shield} label="Admin Panel" />
-              </nav>
-            </div>
-          )}
         </div>
         
         <div className="p-4 border-t border-[#E5E5E5] hover:bg-[#F7F7F9] cursor-pointer transition-colors" onClick={() => setActiveRoute('profile')}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {user.avatar ? (
-                <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-[#3154FF]/10 text-[#3154FF] flex items-center justify-center font-bold text-sm">
-                  {capitalizedName.charAt(0)}
-                </div>
-              )}
+              <div className="w-8 h-8 rounded-full bg-[#3154FF]/10 text-[#3154FF] flex items-center justify-center font-bold text-sm">
+                {capitalizedName.charAt(0)}
+              </div>
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-[#111111] truncate max-w-[120px] leading-tight">{capitalizedName}</span>
                 <div className="flex items-center gap-1.5 mt-1 relative group cursor-help">
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide ${
-                    user.plan === 'pro' || user.plan === 'business' 
-                      ? 'bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-[#78350F] shadow-sm border border-[#F59E0B]/20' 
+                    paidPlan
+                      ? 'bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] text-[#78350F] shadow-sm border border-[#F59E0B]/20'
                       : 'bg-[#F7F7F9] border border-[#E5E5E5] text-[#6B6B6B]'
                   }`}>
-                    {(user.plan || 'FREE').toUpperCase()}
+                    {paidPlan ? 'PRO' : 'FREE'}
                   </span>
-                  {user.role === 'admin' && (
-                    <span className="text-[10px] text-[#6B6B6B] font-mono">
-                      • ADMIN
-                    </span>
-                  )}
                   
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-0 mb-2 w-48 p-2.5 bg-[#111111] text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-[#30363D]">
                     <div className="font-semibold mb-1 text-white">
-                      {user.plan === 'pro' || user.plan === 'business' ? 'Pro Plan Active' : 'Free Plan Active'}
+                      {paidPlan ? 'Pro Plan Active' : 'Free Plan Active'}
                     </div>
                     <div className="text-[#8B949E] space-y-1 mt-1.5">
-                      {user.plan === 'pro' || user.plan === 'business' ? (
+                      {paidPlan ? (
                         <>
                           <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#10B981]" /> 1-minute check intervals</div>
                           <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#10B981]" /> Up to 5 monitors</div>
-                          <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#10B981]" /> Multi-channel alerts</div>
+                          <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#10B981]" /> Email alerts</div>
                         </>
                       ) : (
                         <>
                           <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#6B6B6B]" /> 5-minute check intervals</div>
                           <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#6B6B6B]" /> 1 monitor limit</div>
-                          <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#6B6B6B]" /> Email alerts only</div>
+                          <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#6B6B6B]" /> Email alerts</div>
                         </>
                       )}
                     </div>
@@ -545,6 +847,20 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
 
         {/* Scrollable Dashboard Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          {notice && (
+            <div className="max-w-5xl mx-auto mb-4 bg-[#FFFFFF] border border-[#E5E5E5] rounded-lg px-4 py-3 text-sm text-[#111111] flex items-center justify-between gap-3 shadow-sm">
+              <span>{notice}</span>
+              <button onClick={() => setNotice(null)} className="text-[#6B6B6B] hover:text-[#111111] transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          {monitorsError && (
+            <div className="max-w-5xl mx-auto mb-4 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg px-4 py-3 text-sm text-[#EF4444] flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {monitorsError}</span>
+              <button onClick={fetchAll} className="font-medium hover:underline shrink-0">Retry</button>
+            </div>
+          )}
           {activeRoute === 'overview' ? (
             <motion.div 
               variants={containerVariants}
@@ -594,7 +910,7 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                         {isHealthy ? 'All Systems Operational' : 'Systems Degraded'}
                       </h2>
                       <p className="text-sm text-[#6B6B6B]">
-                        {isHealthy ? 'No active incidents on your monitors.' : `${downCount + degradedCount} monitor(s) experiencing issues.`}
+                        {isHealthy ? 'No active incidents on your monitors.' : `${downCount} monitor(s) experiencing issues.`}
                       </p>
                     </div>
                   </div>
@@ -610,12 +926,12 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                     </div>
                     <div className="pl-4 sm:pl-6">
                       <div className="text-[#6B6B6B] text-xs font-medium mb-1 uppercase tracking-wide truncate">Avg Response</div>
-                      <div className="text-2xl font-semibold text-[#111111]">120<span className="text-sm text-[#6B6B6B] ml-1">ms</span></div>
+                      <div className="text-2xl font-semibold text-[#111111]">{avgResponse}</div>
                     </div>
                     <div className="pl-4 sm:pl-6">
                       <div className="text-[#6B6B6B] text-xs font-medium mb-1 uppercase tracking-wide truncate">Incidents</div>
                       <div className={`text-2xl font-semibold ${!isHealthy ? 'text-[#EF4444]' : 'text-[#111111]'}`}>
-                        {downCount + degradedCount}
+                        {activeIncidents.length}
                       </div>
                     </div>
                   </div>
@@ -626,34 +942,34 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                   <div>
                     <div className="flex items-center justify-between mb-6">
                       <h3 className="font-semibold text-[#111111]">Plan Usage</h3>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${user.plan === 'free' ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20' : 'bg-[#3154FF]/10 text-[#3154FF] border-[#3154FF]/20'}`}>
-                        {user.plan}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${!paidPlan ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20' : 'bg-[#3154FF]/10 text-[#3154FF] border-[#3154FF]/20'}`}>
+                        {paidPlan ? 'pro' : 'free'}
                       </span>
                     </div>
-                    
+
                     <div className="mb-2 flex justify-between items-end">
                       <div className="text-sm font-medium text-[#111111]">Monitors Limit</div>
-                      <div className="text-sm font-semibold text-[#111111]">{totalMonitors} / {user.plan === 'free' ? '1' : '5'}</div>
+                      <div className="text-sm font-semibold text-[#111111]">{totalMonitors} / {planLimit}</div>
                     </div>
                     <div className="w-full bg-[#F7F7F9] rounded-full h-2 mb-6 border border-[#E5E5E5] overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all ${totalMonitors >= (user.plan === 'free' ? 1 : 5) ? 'bg-[#EF4444]' : 'bg-[#10B981]'}`}
-                        style={{ width: `${(totalMonitors / (user.plan === 'free' ? 1 : 5)) * 100}%` }}
+                      <div
+                        className={`h-full rounded-full transition-all ${totalMonitors >= planLimit ? 'bg-[#EF4444]' : 'bg-[#10B981]'}`}
+                        style={{ width: `${Math.min(100, (totalMonitors / planLimit) * 100)}%` }}
                       ></div>
                     </div>
 
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-[#6B6B6B]">Check Interval</span>
-                        <span className="font-medium text-[#111111]">{user.plan === 'free' ? '5 Minutes' : '1 Minute'}</span>
+                        <span className="font-medium text-[#111111]">{paidPlan ? '1 Minute' : '5 Minutes'}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-[#6B6B6B]">Data Retention</span>
-                        <span className="font-medium text-[#111111]">{user.plan === 'free' ? '7 Days' : '1 Year'}</span>
+                        <span className="font-medium text-[#111111]">{paidPlan ? '1 Year' : '7 Days'}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-[#6B6B6B]">Alert Channels</span>
-                        <span className="font-medium text-[#111111]">{user.plan === 'free' ? 'Email Only' : 'Multi-channel'}</span>
+                        <span className="font-medium text-[#111111]">Email</span>
                       </div>
                     </div>
                   </div>
@@ -669,41 +985,39 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                 </motion.div>
               </div>
 
-              {/* Pro User Insights */}
-              {user.plan === 'pro' && (
+              {/* Response insight (real check data) */}
+              {chartPoints.length > 0 && (
                 <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                  <div className="bg-[#FFFFFF] border border-[#3154FF]/20 rounded-xl shadow-[0_1px_2px_rgba(49,84,255,0.05)] p-5 relative overflow-hidden group hover:border-[#3154FF]/40 transition-colors">
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                        <Zap className="w-16 h-16 text-[#3154FF]" />
-                     </div>
-                     <div className="flex items-center justify-between mb-4 relative z-10">
-                       <h3 className="text-sm font-medium text-[#111111]">Average Response Time</h3>
-                       <span className="bg-[#3154FF]/10 text-[#3154FF] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-[#3154FF]/20">Pro Insight</span>
-                     </div>
-                     <div className="text-3xl font-semibold text-[#111111] mb-1 relative z-10">118<span className="text-lg text-[#6B6B6B] ml-1 font-normal">ms</span></div>
-                     <p className="text-xs text-[#10B981] mt-2 flex items-center gap-1 relative z-10"><TrendingDown className="w-3 h-3" /> 12ms faster than last week</p>
+                  <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <h3 className="text-sm font-medium text-[#111111]">Average Response Time</h3>
+                      <span className="bg-[#F7F7F9] text-[#6B6B6B] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-[#E5E5E5]">Recent checks</span>
+                    </div>
+                    <div className="text-3xl font-semibold text-[#111111] mb-1 relative z-10">{avgResponse}</div>
+                    <p className="text-xs text-[#6B6B6B] mt-2 relative z-10">Across the last {chartPoints.length} recorded checks</p>
                   </div>
-                  
-                  <div className="bg-[#FFFFFF] border border-[#3154FF]/20 rounded-xl shadow-[0_1px_2px_rgba(49,84,255,0.05)] p-5 relative overflow-hidden group hover:border-[#3154FF]/40 transition-colors">
-                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                        <Globe className="w-16 h-16 text-[#3154FF]" />
-                     </div>
-                     <div className="flex items-center justify-between mb-4 relative z-10">
-                       <h3 className="text-sm font-medium text-[#111111]">Global Edge Reach</h3>
-                       <span className="bg-[#3154FF]/10 text-[#3154FF] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-[#3154FF]/20">Pro Insight</span>
-                     </div>
-                     <div className="text-3xl font-semibold text-[#111111] mb-1 relative z-10">12<span className="text-lg text-[#6B6B6B] ml-1 font-normal">Regions</span></div>
-                     <p className="text-xs text-[#6B6B6B] mt-2 relative z-10">Checked concurrently across the globe</p>
+
+                  <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <h3 className="text-sm font-medium text-[#111111]">Recorded Incidents</h3>
+                      <span className="bg-[#F7F7F9] text-[#6B6B6B] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-[#E5E5E5]">Check history</span>
+                    </div>
+                    <div className="text-3xl font-semibold text-[#111111] mb-1 relative z-10">{incidents.length}</div>
+                    <p className="text-xs text-[#6B6B6B] mt-2 relative z-10">{activeIncidents.length} active right now</p>
                   </div>
                 </motion.div>
               )}
 
               {/* Performance Trend Chart */}
-              {totalMonitors > 0 && (
+              {chartPoints.length > 0 ? (
                 <motion.div variants={itemVariants} className="mb-8">
-                  <PerformanceChart />
+                  <PerformanceChart points={chartPoints} />
                 </motion.div>
-              )}
+              ) : totalMonitors > 0 ? (
+                <motion.div variants={itemVariants} className="mb-8 bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl p-6 text-center text-sm text-[#6B6B6B]">
+                  No check data yet — checks run every {planIntervalLabel}. Use the refresh button on a monitor to probe it right now.
+                </motion.div>
+              ) : null}
 
               {/* Monitor Health Breakdown */}
               {totalMonitors > 0 && (
@@ -711,12 +1025,12 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                   <h3 className="text-sm font-semibold text-[#111111] mb-3">Monitor Health</h3>
                   <div className="flex gap-2 h-3 rounded-full overflow-hidden bg-[#F7F7F9] border border-[#E5E5E5]">
                     <div className="bg-[#10B981] h-full" style={{ width: `${(operationalCount/totalMonitors)*100}%` }} title={`Operational (${operationalCount})`}></div>
-                    <div className="bg-[#F59E0B] h-full" style={{ width: `${(degradedCount/totalMonitors)*100}%` }} title={`Degraded (${degradedCount})`}></div>
+                    <div className="bg-[#A3A3A3] h-full" style={{ width: `${(pendingCount/totalMonitors)*100}%` }} title={`Pending (${pendingCount})`}></div>
                     <div className="bg-[#EF4444] h-full" style={{ width: `${(downCount/totalMonitors)*100}%` }} title={`Down (${downCount})`}></div>
                   </div>
                   <div className="flex gap-4 mt-3 text-xs">
                     <div className="flex items-center gap-1.5 text-[#6B6B6B]"><div className="w-2 h-2 rounded-full bg-[#10B981]"></div> Operational ({operationalCount})</div>
-                    <div className="flex items-center gap-1.5 text-[#6B6B6B]"><div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div> Degraded ({degradedCount})</div>
+                    <div className="flex items-center gap-1.5 text-[#6B6B6B]"><div className="w-2 h-2 rounded-full bg-[#A3A3A3]"></div> Pending ({pendingCount})</div>
                     <div className="flex items-center gap-1.5 text-[#6B6B6B]"><div className="w-2 h-2 rounded-full bg-[#EF4444]"></div> Down ({downCount})</div>
                   </div>
                 </motion.div>
@@ -738,7 +1052,13 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E5E5E5]">
-                      {monitors.length === 0 ? (
+                      {loadingMonitors ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-16 text-center text-[#6B6B6B]">
+                            <p className="flex items-center justify-center gap-2 text-sm"><Activity className="w-4 h-4 animate-spin" /> Loading monitors...</p>
+                          </td>
+                        </tr>
+                      ) : monitors.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-16">
                             <motion.div 
@@ -775,11 +1095,13 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                           </td>
                         </tr>
                       ) : monitors.map((monitor) => (
-                        <MonitorRow 
-                          key={monitor.id} 
-                          monitor={monitor} 
-                          onEdit={(m) => { setEditingMonitor(m); setActiveRoute('monitors-edit'); }} 
-                          onDelete={(m) => setMonitorToDelete(m)} 
+                        <MonitorRow
+                          key={monitor.id}
+                          monitor={monitor}
+                          onEdit={(m) => setEditTarget(m)}
+                          onDelete={(m) => setMonitorToDelete(m)}
+                          onCheck={handleRunCheck}
+                          checking={checkingIds.includes(monitor.id)}
                         />
                       ))}
                     </tbody>
@@ -807,9 +1129,9 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                 </button>
               </div>
 
-              {totalMonitors > 0 && (
+              {totalMonitors > 0 && chartPoints.length > 0 && (
                 <div className="mb-8">
-                  <PerformanceChart />
+                  <PerformanceChart points={chartPoints} />
                 </div>
               )}
 
@@ -838,18 +1160,26 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E5E5E5]">
-                      {monitors.length === 0 ? (
+                      {loadingMonitors ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-16 text-center text-[#6B6B6B]">
+                            <p className="flex items-center justify-center gap-2 text-sm"><Activity className="w-4 h-4 animate-spin" /> Loading monitors...</p>
+                          </td>
+                        </tr>
+                      ) : monitors.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-16 text-center text-[#6B6B6B]">
                             <p>No monitors found. Click "Add Monitor" to get started.</p>
                           </td>
                         </tr>
                       ) : monitors.map((monitor) => (
-                        <MonitorRow 
-                          key={monitor.id} 
-                          monitor={monitor} 
-                          onEdit={(m) => { setEditingMonitor(m); setActiveRoute('monitors-edit'); }} 
-                          onDelete={(m) => setMonitorToDelete(m)} 
+                        <MonitorRow
+                          key={monitor.id}
+                          monitor={monitor}
+                          onEdit={(m) => setEditTarget(m)}
+                          onDelete={(m) => setMonitorToDelete(m)}
+                          onCheck={handleRunCheck}
+                          checking={checkingIds.includes(monitor.id)}
                         />
                       ))}
                     </tbody>
@@ -866,18 +1196,49 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
             >
               <div className="mb-8">
                 <h2 className="text-2xl font-semibold tracking-tight text-[#111111] mb-1">Incidents</h2>
-                <p className="text-[#6B6B6B] text-sm">Review past outages, performance drops, and ongoing issues.</p>
+                <p className="text-[#6B6B6B] text-sm">Downtime windows derived from recorded check history.</p>
               </div>
 
-              <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center flex flex-col items-center justify-center">
-                <div className="w-16 h-16 bg-[#10B981]/10 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
+              {incidents.length === 0 ? (
+                <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-8 text-center flex flex-col items-center justify-center">
+                  <div className="w-16 h-16 bg-[#10B981]/10 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-[#111111] mb-2">No Incidents Recorded</h3>
+                  <p className="text-[#6B6B6B] text-sm max-w-md mx-auto">
+                    {totalMonitors === 0
+                      ? 'Add a monitor to start recording checks. Any downtime will be logged here.'
+                      : 'No failed checks in recorded history. Any future downtime will be logged here.'}
+                  </p>
                 </div>
-                <h3 className="text-lg font-semibold text-[#111111] mb-2">No Active Incidents</h3>
-                <p className="text-[#6B6B6B] text-sm max-w-md mx-auto">
-                  All systems are currently operational. Any future downtime or degraded performance events will be logged here.
-                </p>
-              </div>
+              ) : (
+                <div className="space-y-4">
+                  {incidents.map((incident) => (
+                    <div key={incident.id} className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${incident.endedAt === null ? 'bg-[#EF4444]/10' : 'bg-[#10B981]/10'}`}>
+                        {incident.endedAt === null ? (
+                          <AlertTriangle className="w-5 h-5 text-[#EF4444]" />
+                        ) : (
+                          <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-[#111111]">{incident.monitorName}</h3>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${incident.endedAt === null ? 'bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20' : 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20'}`}>
+                            {incident.endedAt === null ? 'Active' : 'Resolved'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#6B6B6B] mt-1">
+                          Started {new Date(incident.startedAt).toLocaleString()}
+                          {incident.endedAt ? ` · Resolved ${new Date(incident.endedAt).toLocaleString()}` : ' · Ongoing'}
+                          {` · ${incident.checkCount} failed check${incident.checkCount === 1 ? '' : 's'}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           ) : activeRoute === 'status-pages' ? (
             <motion.div 
@@ -929,7 +1290,7 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
               </div>
             </motion.div>
           ) : activeRoute === 'status-page-preview' ? (
-            <StatusPage onBack={() => setActiveRoute('status-pages')} monitors={monitors} />
+            <StatusPage onBack={() => setActiveRoute('status-pages')} monitors={monitors} points={chartPoints} />
           ) : activeRoute === 'alerts' ? (
             <motion.div 
               variants={containerVariants}
@@ -940,11 +1301,11 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
               <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight text-[#111111] mb-1">Alerting & Notifications</h2>
-                  <p className="text-[#6B6B6B] text-sm">Configure where and how you want to be notified of incidents.</p>
+                  <p className="text-[#6B6B6B] text-sm">Email rules per monitor. Test sends a real email to {user.email}.</p>
                 </div>
-                <button 
+                <button
                   onClick={handleTestAlert}
-                  disabled={isTestingAlert || testSuccess}
+                  disabled={isTestingAlert}
                   className="bg-[#FFFFFF] border border-[#E5E5E5] hover:bg-[#F7F7F9] text-[#111111] text-sm font-medium px-4 py-2 rounded-lg inline-flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed min-w-[160px]"
                 >
                   {testSuccess ? (
@@ -956,169 +1317,104 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                   )}
                 </button>
               </div>
+              {testError && (
+                <p className="text-[#EF4444] text-sm mb-4 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> {testError}</p>
+              )}
 
-              <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
-                <div className="p-6 border-b border-[#E5E5E5] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#F7F7F9] rounded-lg flex items-center justify-center">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#111111]" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-[#111111]">Email Notifications</h3>
-                      <p className="text-xs text-[#6B6B6B]">Receive alerts at {user.email}</p>
-                    </div>
+              <div className="space-y-4">
+                {monitors.length === 0 ? (
+                  <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl p-8 text-center text-sm text-[#6B6B6B]">
+                    Add a monitor first — then return here to configure who gets emailed when it goes down.
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="sr-only peer" 
-                      checked={user.alerts?.email !== false}
-                      onChange={(e) => {
-                        // Construct the new user settings object
-                        const updatedUser = { 
-                          ...user, 
-                          alerts: { ...(user.alerts || { email: true, telegram: false, webhook: false }), email: e.target.checked }
-                        };
-                        
-                        // =====================================================================
-                        // TODO (API/DATABASE): UPDATE USER PREFERENCES IN DATABASE
-                        // Push this preference change to your backend so the worker stops sending emails.
-                        // Example: await fetch('/api/user/preferences', { method: 'PATCH', body: JSON.stringify({ alerts: updatedUser.alerts }) });
-                        // =====================================================================
-                        
-                        store.saveUser(updatedUser); // Save to local storage
-                        onUpdateUser?.(updatedUser); // Update parent app React state
-                      }}
-                    />
-                    <div className="w-11 h-6 bg-[#E5E5E5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981]"></div>
-                  </label>
-                </div>
-
-                <div className={`p-6 border-b border-[#E5E5E5] flex items-center justify-between ${user.plan === 'free' ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#F7F7F9] rounded-lg flex items-center justify-center">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#111111]" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-[#111111]">Telegram Integration</h3>
-                      <p className="text-xs text-[#6B6B6B]">{user.plan === 'free' ? 'Requires Pro Plan' : 'Receive instant messages'}</p>
-                    </div>
-                  </div>
-                  {user.plan === 'free' ? (
-                    <button onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')} className="text-xs font-medium bg-[#F7F7F9] hover:bg-[#E5E5E5] text-[#111111] px-3 py-1.5 rounded-md border border-[#E5E5E5] transition-colors">
-                      Upgrade
-                    </button>
-                  ) : (
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={user.alerts?.telegram || false}
-                        onChange={(e) => {
-                          const updatedUser = { 
-                            ...user, 
-                            alerts: { ...(user.alerts || { email: true, telegram: false, webhook: false }), telegram: e.target.checked }
-                          };
-                          // =====================================================================
-                          // TODO (API/DATABASE): UPDATE TELEGRAM PREFERENCES
-                          // Example: await fetch('/api/user/preferences', { method: 'PATCH', body: JSON.stringify({ alerts: updatedUser.alerts }) });
-                          // =====================================================================
-                          store.saveUser(updatedUser);
-                          onUpdateUser?.(updatedUser);
-                        }}
-                      />
-                      <div className="w-11 h-6 bg-[#E5E5E5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981]"></div>
-                    </label>
-                  )}
-                </div>
-                
-                <div className={`p-6 flex items-center justify-between ${user.plan === 'free' ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#F7F7F9] rounded-lg flex items-center justify-center">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#111111]" fill="currentColor"><path d="M2 13h20v-2H2v2zm0 4h20v-2H2v2zm0-8h20V7H2v2zm0-4v2h20V5H2z" /></svg>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-[#111111]">Webhooks</h3>
-                      <p className="text-xs text-[#6B6B6B]">{user.plan === 'free' ? 'Requires Pro Plan' : 'Post to external endpoints'}</p>
-                    </div>
-                  </div>
-                  {user.plan === 'free' ? (
-                    <button onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')} className="text-xs font-medium bg-[#F7F7F9] hover:bg-[#E5E5E5] text-[#111111] px-3 py-1.5 rounded-md border border-[#E5E5E5] transition-colors">
-                      Upgrade
-                    </button>
-                  ) : (
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={user.alerts?.webhook || false}
-                        onChange={(e) => {
-                          const updatedUser = { 
-                            ...user, 
-                            alerts: { ...(user.alerts || { email: true, telegram: false, webhook: false }), webhook: e.target.checked }
-                          };
-                          // =====================================================================
-                          // TODO (API/DATABASE): UPDATE WEBHOOK PREFERENCES
-                          // Example: await fetch('/api/user/preferences', { method: 'PATCH', body: JSON.stringify({ alerts: updatedUser.alerts }) });
-                          // =====================================================================
-                          store.saveUser(updatedUser);
-                          onUpdateUser?.(updatedUser);
-                        }}
-                      />
-                      <div className="w-11 h-6 bg-[#E5E5E5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981]"></div>
-                    </label>
-                  )}
-                </div>
+                ) : (
+                  monitors.map((m) => {
+                    const rule = alerts.find((a) => a.monitor_id === m.id);
+                    const saving = savingAlertId === (rule ? rule.id : m.id);
+                    return (
+                      <div key={m.id} className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6">
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${m.status === 'down' ? 'bg-[#EF4444]' : m.status === 'pending' ? 'bg-[#A3A3A3]' : 'bg-[#10B981]'}`}></span>
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-[#111111] truncate">{m.name}</h3>
+                              <p className="text-xs text-[#6B6B6B] font-mono truncate">{m.url}</p>
+                            </div>
+                          </div>
+                          {rule && (
+                            <button
+                              onClick={() => handleDeleteAlert(rule)}
+                              disabled={saving}
+                              className="text-[#6B6B6B] hover:text-[#EF4444] p-1.5 rounded-md hover:bg-[#EF4444]/10 transition-colors disabled:opacity-50 shrink-0"
+                              title="Delete alert rule"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        {rule ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-[#6B6B6B]">Notify <span className="font-medium text-[#111111]">{rule.target}</span></span>
+                              <RuleToggle
+                                checked={rule.is_enabled}
+                                disabled={saving}
+                                onChange={(v) => handleToggleAlert(rule, { is_enabled: v })}
+                                label="Enabled"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-[#6B6B6B]">On downtime</span>
+                              <RuleToggle
+                                checked={rule.on_down}
+                                disabled={saving}
+                                onChange={(v) => handleToggleAlert(rule, { on_down: v })}
+                                label="Down alerts"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-[#6B6B6B]">On recovery</span>
+                              <RuleToggle
+                                checked={rule.on_recovery}
+                                disabled={saving}
+                                onChange={(v) => handleToggleAlert(rule, { on_recovery: v })}
+                                label="Recovery alerts"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                              type="email"
+                              value={alertFormTarget[m.id] ?? user.email}
+                              onChange={(e) => setAlertFormTarget((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                              placeholder="you@example.com"
+                              className="flex-1 bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF]"
+                            />
+                            <button
+                              onClick={() => handleCreateAlert(m.id)}
+                              disabled={saving}
+                              className="bg-[#111111] hover:bg-[#000000] text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm inline-flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                              <Send className="w-3.5 h-3.5" /> Add email alert
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {/* Webhook History Panel */}
+              {/* Email is the only channel the API supports today. */}
+                
+
+
+              {/* How email alerts work */}
               <div className="mt-8">
-                <h3 className="text-lg font-semibold text-[#111111] mb-4">Webhook History</h3>
-                <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#E5E5E5] bg-[#F7F7F9]">
-                          <th className="py-3 px-4 text-xs font-semibold text-[#6B6B6B] uppercase tracking-wider">Timestamp</th>
-                          <th className="py-3 px-4 text-xs font-semibold text-[#6B6B6B] uppercase tracking-wider">Event</th>
-                          <th className="py-3 px-4 text-xs font-semibold text-[#6B6B6B] uppercase tracking-wider">Status</th>
-                          <th className="py-3 px-4 text-xs font-semibold text-[#6B6B6B] uppercase tracking-wider text-right">Response</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#E5E5E5]">
-                        {webhookLogs.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="py-12 text-center text-[#6B6B6B] text-sm">
-                              No webhooks have been triggered yet. Click "Test Notification" to send a payload.
-                            </td>
-                          </tr>
-                        ) : (
-                          webhookLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-[#F7F7F9]/50 transition-colors">
-                              <td className="py-4 px-4 text-sm text-[#111111] whitespace-nowrap">{log.timestamp}</td>
-                              <td className="py-4 px-4 text-sm text-[#111111] font-medium">{log.event}</td>
-                              <td className="py-4 px-4">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${log.status === 'success' ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' : 'bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20'}`}>
-                                  {log.status === 'success' ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />} {log.code} {log.status === 'success' ? 'OK' : 'ERR'}
-                                </span>
-                              </td>
-                              <td className="py-4 px-4 text-sm text-[#6B6B6B] text-right font-mono text-xs">{log.response}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  {webhookLogs.length > 0 && (
-                    <div className="p-4 border-t border-[#E5E5E5] bg-[#F7F7F9] flex justify-center">
-                      <button 
-                        onClick={() => setWebhookLogs([])}
-                        className="text-sm font-medium text-[#6B6B6B] hover:text-[#EF4444] transition-colors"
-                      >
-                        Clear logs
-                      </button>
-                    </div>
-                  )}
+                <h3 className="text-lg font-semibold text-[#111111] mb-4">How email alerts work</h3>
+                <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-sm text-[#6B6B6B] space-y-2">
+                  <p>When a monitor transitions from UP to DOWN, every enabled rule for that monitor receives an email. When it recovers, recovery emails go out to rules with recovery enabled.</p>
+                  <p>Emails are sent from <span className="font-medium text-[#111111]">alerts@downalert.in</span>. New monitors get an email rule for your account address automatically — edit the target above to change it.</p>
                 </div>
               </div>
             </motion.div>
@@ -1136,64 +1432,41 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
 
               <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 mb-6">
                 <h3 className="text-sm font-semibold text-[#111111] mb-5">Personal Information</h3>
-                
+
                 <div className="flex flex-col sm:flex-row gap-8">
                   <div className="flex-shrink-0">
-                    <div className="relative group">
-                      {user.avatar ? (
-                        <img src={user.avatar} alt="Avatar" className="w-24 h-24 rounded-full object-cover border border-[#E5E5E5]" />
-                      ) : (
-                        <div className="w-24 h-24 rounded-full bg-[#3154FF]/10 text-[#3154FF] flex items-center justify-center font-bold text-3xl border border-[#E5E5E5]">
-                          {capitalizedName.charAt(0)}
-                        </div>
-                      )}
-                      <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                        <span className="text-xs font-medium">Upload</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                const newAvatar = reader.result as string;
-                                const updatedUser = { ...user, avatar: newAvatar };
-                                store.saveUser(updatedUser);
-                                onUpdateUser?.(updatedUser);
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
+                    <div className="w-24 h-24 rounded-full bg-[#3154FF]/10 text-[#3154FF] flex items-center justify-center font-bold text-3xl border border-[#E5E5E5]">
+                      {capitalizedName.charAt(0)}
                     </div>
                   </div>
 
                   <div className="flex-1 space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-[#111111] mb-1.5">Full Name</label>
-                      <input 
-                        type="text" 
-                        defaultValue={user.name}
-                        onBlur={(e) => {
-                          if (e.target.value !== user.name) {
-                            const updatedUser = { ...user, name: e.target.value };
-                            store.saveUser(updatedUser);
-                            onUpdateUser?.(updatedUser);
-                          }
-                        }}
-                        className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF]" 
+                      <label className="block text-xs font-medium text-[#111111] mb-1.5">Display Name</label>
+                      <input
+                        type="text"
+                        disabled
+                        value={capitalizedName}
+                        className="w-full bg-[#F7F7F9] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#6B6B6B] cursor-not-allowed"
                       />
+                      <p className="text-xs text-[#A3A3A3] mt-1.5">Derived from your email address.</p>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#111111] mb-1.5">Email Address</label>
-                      <input 
-                        type="email" 
+                      <input
+                        type="email"
                         disabled
                         value={user.email}
-                        className="w-full bg-[#F7F7F9] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#6B6B6B] cursor-not-allowed" 
+                        className="w-full bg-[#F7F7F9] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#6B6B6B] cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#111111] mb-1.5">Member Since</label>
+                      <input
+                        type="text"
+                        disabled
+                        value={new Date(user.createdAt).toLocaleDateString()}
+                        className="w-full bg-[#F7F7F9] border border-[#E5E5E5] rounded-md px-3 py-2 text-sm text-[#6B6B6B] cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -1204,12 +1477,12 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                 <h3 className="text-sm font-semibold text-[#111111] mb-5">Subscription Plan</h3>
                 <div className="flex items-center justify-between p-4 bg-[#F7F7F9] rounded-lg border border-[#E5E5E5]">
                   <div>
-                    <div className="font-medium text-[#111111] capitalize">{user.plan} Plan</div>
+                    <div className="font-medium text-[#111111] capitalize">{paidPlan ? 'Pro' : 'Free'} Plan</div>
                     <div className="text-xs text-[#6B6B6B] mt-0.5">
-                      {user.plan === 'free' ? 'Basic monitoring with 5-minute intervals.' : 'Advanced monitoring with 1-minute intervals.'}
+                      {paidPlan ? 'Advanced monitoring with 1-minute intervals.' : 'Basic monitoring with 5-minute intervals.'}
                     </div>
                   </div>
-                  {user.plan === 'free' && (
+                  {!paidPlan && (
                     <button 
                       onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')}
                       className="bg-[#111111] hover:bg-[#000000] text-white text-xs font-medium px-4 py-2 rounded-md transition-colors"
@@ -1256,11 +1529,12 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={handleDeleteMonitor}
-                    className="px-4 py-2 text-sm font-medium bg-[#EF4444] text-white hover:bg-[#DC2626] rounded-md transition-colors shadow-sm"
+                    disabled={isDeleting}
+                    className="px-4 py-2 text-sm font-medium bg-[#EF4444] text-white hover:bg-[#DC2626] rounded-md transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    Delete Monitor
+                    {isDeleting ? 'Deleting...' : 'Delete Monitor'}
                   </button>
                 </div>
               </div>
@@ -1370,7 +1644,7 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
       {/* Quick Add Modal */}
       <AnimatePresence>
         {isQuickAddOpen && (
-          <QuickAddModal 
+          <QuickAddModal
             isOpen={isQuickAddOpen}
             onClose={() => setIsQuickAddOpen(false)}
             user={user}
@@ -1378,6 +1652,31 @@ export default function Dashboard({ user, onUpdateUser, onLogout }: DashboardPro
             onSave={(m) => {
               setMonitors([...monitors, m]);
               setIsQuickAddOpen(false);
+              // New monitors get an email rule for the account address automatically
+              // so downtime actually notifies. Best-effort: rules can be edited later.
+              createAlert({ monitor_id: m.id, target: user.email })
+                .then((alert) => setAlerts((prev) => [alert, ...prev]))
+                .catch(() => setNotice(`Monitor "${m.name}" added. Open Alerts to configure email notifications.`));
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Edit Monitor Modal */}
+      <AnimatePresence>
+        {editTarget && (
+          <EditMonitorModal
+            monitor={editTarget}
+            user={user}
+            onClose={() => setEditTarget(null)}
+            onSave={async (updated) => {
+              setMonitors((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+              try {
+                const hydrated = await refreshChecksFor(updated.id, updated);
+                setMonitors((prev) => prev.map((x) => (x.id === updated.id ? hydrated : x)));
+              } catch {
+                /* checks refresh is best-effort */
+              }
             }}
           />
         )}

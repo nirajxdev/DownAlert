@@ -1,21 +1,17 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const data = [
-  { time: '00:00', latency: 120 },
-  { time: '04:00', latency: 118 },
-  { time: '08:00', latency: 135 },
-  { time: '12:00', latency: 180 },
-  { time: '16:00', latency: 125 },
-  { time: '20:00', latency: 110 },
-  { time: '24:00', latency: 115 },
-];
+export interface ChartPoint {
+  time: string;
+  latency: number;
+}
 
-export default function PerformanceChart() {
+export default function PerformanceChart({ points }: { points: ChartPoint[] }) {
+  const data = points.length > 0 ? points : [{ time: '—', latency: 0 }];
   return (
     <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-[#111111]">Average Response Time (24h)</h3>
-        <p className="text-xs text-[#6B6B6B] mt-1">Global latency across all monitored endpoints</p>
+        <h3 className="text-sm font-semibold text-[#111111]">Response Time Trend</h3>
+        <p className="text-xs text-[#6B6B6B] mt-1">Recorded latency across recent checks</p>
       </div>
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
