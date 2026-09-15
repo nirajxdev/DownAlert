@@ -3,5 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "Checking engine — scheduler + HTTP checker",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "node-cron": "^3.0.3",
+    "pg": "^8.23.0"
+  }
 }
