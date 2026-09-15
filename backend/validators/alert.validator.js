@@ -51,3 +51,14 @@ export const updateAlertSchema = z
 export const alertIdParamSchema = z.object({
   id: z.string({ required_error: "Alert ID is required" }).uuid("Alert ID must be a valid UUID"),
 });
+
+export const testAlertSchema = z
+  .object({
+    target: z
+      .string({ required_error: "Target is required" })
+      .trim()
+      .min(1, "Target is required")
+      .max(255, "Target must be at most 255 characters")
+      .email("Target must be a valid email address"),
+  })
+  .strict();

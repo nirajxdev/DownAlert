@@ -2,6 +2,7 @@ import "dotenv/config";
 import cron from "node-cron";
 import pool from "./db/index.js";
 import { checkUrl } from "./checker.js";
+import { isEmailConfigured, sendDownEmail, sendRecoveryEmail } from "./email.js";
 
 const BATCH = Number(process.env.WORKER_BATCH_SIZE) || 50;
 const CRON = process.env.WORKER_CRON || "* * * * *";
@@ -13,7 +14,7 @@ let task = null;
 const claimDueMonitors = async () => {
   const result = await pool.query(
     `
-      SELECT id, user_id, url, current_status, check_interval_seconds
+      SELECT id, user_id, name, url, current_status, check_interval_seconds
       FROM monitors
       WHERE next_check_at <= NOW()
       ORDER BY next_check_at ASC
@@ -22,6 +23,75 @@ const claimDueMonitors = async () => {
     [BATCH]
   );
   return result.rows;
+};
+
+const notifyTransition = async ({ monitor, type, probe }) => {
+  if (!isEmailConfigured()) {
+    console.log("[worker] email not configured, skipping notifications");
+    return;
+  }
+
+  const alertsResult = await pool.query(
+    `
+      SELECT id, target, on_down, on_recovery
+      FROM alerts
+      WHERE monitor_id = $1 AND is_enabled = TRUE AND channel = 'EMAIL'
+    `,
+    [monitor.id]
+  );
+  const recipients = alertsResult.rows.filter((alert) =>
+    type === "DOWN" ? alert.on_down : alert.on_recovery
+  );
+
+  if (recipients.length === 0) {
+    console.log(`[worker] no enabled alerts for monitor=${monitor.id} type=${type}`);
+    return;
+  }
+
+  for (const alert of recipients) {
+    const payload = {
+      to: alert.target,
+      monitorName: monitor.name,
+      url: monitor.url,
+      statusCode: probe.statusCode,
+      error: probe.error,
+    };
+    try {
+      const { id } =
+        type === "DOWN" ? await sendDownEmail(payload) : await sendRecoveryEmail(payload);
+      await pool.query(
+        `
+          INSERT INTO alert_logs (monitor_id, alert_type, message, channel, delivery_status, provider_id, sent_at)
+          VALUES ($1, $2, $3, 'EMAIL', 'SENT', $4, NOW())
+        `,
+        [
+          monitor.id,
+          type,
+          `${monitor.name} ${type === "DOWN" ? "is DOWN" : "recovered"} (${monitor.url})`,
+          id,
+        ]
+      );
+      console.log(
+        `[worker] email SENT to=${alert.target} monitor=${monitor.id} type=${type} provider=${id}`
+      );
+    } catch (error) {
+      await pool.query(
+        `
+          INSERT INTO alert_logs (monitor_id, alert_type, message, channel, delivery_status, provider_id, sent_at)
+          VALUES ($1, $2, $3, 'EMAIL', 'FAILED', NULL, NULL)
+        `,
+        [
+          monitor.id,
+          type,
+          `${monitor.name} ${type} notify failed: ${String(error?.message || error).slice(0, 200)}`,
+        ]
+      );
+      console.error(
+        `[worker] email FAILED to=${alert.target} monitor=${monitor.id}`,
+        error?.message || error
+      );
+    }
+  }
 };
 
 const processMonitor = async (monitor) => {
@@ -67,8 +137,15 @@ const processMonitor = async (monitor) => {
     console.log(
       `[worker] TRANSITION ${prevStatus}->${probe.status} monitor=${monitor.id} url=${monitor.url}`
     );
-    // TODO step-2 (email): lookup enabled alerts for monitor.id,
-    // send via Resend, INSERT INTO alert_logs. MVP only logs.
+    // First-ever check (PENDING) only establishes a baseline — notify on
+    // real UP<->DOWN transitions to avoid noise for brand-new monitors.
+    if (prevStatus !== "PENDING") {
+      await notifyTransition({
+        monitor,
+        type: probe.status === "DOWN" ? "DOWN" : "RECOVERY",
+        probe,
+      }).catch((error) => console.error("[worker] notify error", error));
+    }
   } else {
     console.log(
       `[worker] ${monitor.id} ${monitor.url} -> ${probe.status} ${probe.statusCode ?? "-"} ${probe.responseTime}ms`

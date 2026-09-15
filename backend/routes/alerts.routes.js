@@ -4,6 +4,7 @@ import {
   createAlertSchema,
   updateAlertSchema,
   alertIdParamSchema,
+  testAlertSchema,
 } from "../validators/alert.validator.js";
 import {
   createAlert,
@@ -12,6 +13,7 @@ import {
   updateAlert,
   deleteAlert,
 } from "../services/alert.service.js";
+import { sendTestEmail } from "../services/email.service.js";
 
 const router = express.Router();
 
@@ -59,6 +61,36 @@ router.post("/", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/alerts/test - Send a test email to verify delivery
+router.post("/test", async (req, res) => {
+  const validation = testAlertSchema.safeParse(req.body);
+
+  if (!validation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid request data",
+      errors: validation.error.issues,
+    });
+  }
+
+  try {
+    const { id } = await sendTestEmail(validation.data.target);
+
+    return res.status(200).json({
+      success: true,
+      message: "Test email sent successfully",
+      id,
+    });
+  } catch (error) {
+    console.error("Test alert error:", error);
+
+    return res.status(502).json({
+      success: false,
+      message: "Failed to send test email",
     });
   }
 });
