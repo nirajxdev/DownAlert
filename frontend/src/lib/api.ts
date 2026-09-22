@@ -163,7 +163,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, "Cannot reach the DownAlert API. Is the backend running?");
+    // In production (e.g. Vercel) API_URL must be the deployed backend URL.
+    // If it is still localhost, the browser tries the viewer's own machine and fails.
+    const isLocalApi = /localhost|127\.0\.0\.1/.test(API_URL);
+    const isDeployed = typeof window !== "undefined" && !/localhost|127\.0\.0\.1/.test(window.location.hostname);
+    if (isLocalApi && isDeployed) {
+      throw new ApiError(
+        0,
+        `Cannot reach the API at ${API_URL}. Set VITE_API_URL to your deployed backend URL and redeploy.`
+      );
+    }
+    throw new ApiError(0, `Cannot reach the DownAlert API at ${API_URL}. Is the backend running?`);
   }
 
   let data: any = null;

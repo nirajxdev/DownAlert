@@ -19,18 +19,39 @@ app.use(helmet());
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // CORS — comma-separated allowlist from CORS_ORIGIN, defaults to Vite dev.
+// Production: set CORS_ORIGIN to your Vercel frontend URL(s), e.g.
+//   CORS_ORIGIN="https://downalert.vercel.app,https://*.vercel.app"
+// Supports exact matches + wildcard subdomains (https://*.vercel.app).
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
-  .map((o) => o.trim())
+  .map((o) => o.trim().replace(/\/$/, ""))
   .filter(Boolean);
+
+const matchesOrigin = (origin, pattern) => {
+  if (pattern === origin) return true;
+  // Wildcard support: "https://*.vercel.app" matches "https://foo.vercel.app"
+  if (pattern.includes("*")) {
+    const regex = new RegExp(
+      "^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") + "$"
+    );
+    return regex.test(origin);
+  }
+  return false;
+};
+
+const isAllowedOrigin = (origin) => allowedOrigins.some((p) => matchesOrigin(origin, p));
+
 app.use(
   cors({
     origin: (origin, cb) => {
       // Allow same-origin / curl / health checks with no Origin header.
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
+      const normalized = origin.replace(/\/$/, "");
+      if (isAllowedOrigin(normalized)) return cb(null, true);
       return cb(new Error(`CORS blocked for origin ${origin}`));
     },
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json({ limit: "100kb" }));
@@ -100,7 +121,9 @@ app.use((err, req, res, _next) => {
 
 const port = process.env.PORT || 5000;
 
-if (process.env.NODE_ENV !== "test") {
+// Vercel serverless: do NOT call app.listen — Vercel invokes the exported app.
+// See backend/api/index.js. Locally (or Railway/Render) we do listen.
+if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
