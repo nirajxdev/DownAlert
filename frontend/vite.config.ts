@@ -18,5 +18,18 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      // Keep the initial bundle small: heavy chart/animation vendors load as
+      // separate chunks instead of bloating the main entry (silences the
+      // 500KB chunk-size warning and speeds up first paint).
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-charts': ['recharts', 'd3'],
+            'vendor-motion': ['motion', 'gsap', '@gsap/react'],
+          },
+        },
+      },
+    },
   };
 });
