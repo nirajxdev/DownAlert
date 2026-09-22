@@ -7,6 +7,8 @@ import { isEmailConfigured, sendDownEmail, sendRecoveryEmail } from "./email.js"
 const BATCH = Number(process.env.WORKER_BATCH_SIZE) || 50;
 const CRON = process.env.WORKER_CRON || "* * * * *";
 const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY) || 5;
+// Consecutive failures required before a DOWN email fires (flap protection).
+const FAILURE_THRESHOLD = Math.max(1, Number(process.env.ALERT_FAILURE_THRESHOLD) || 2);
 
 let isRunning = false;
 let task = null;
@@ -14,7 +16,7 @@ let task = null;
 const claimDueMonitors = async () => {
   const result = await pool.query(
     `
-      SELECT id, user_id, name, url, current_status, check_interval_seconds
+      SELECT id, user_id, name, url, current_status, consecutive_failures, check_interval_seconds
       FROM monitors
       WHERE next_check_at <= NOW()
       ORDER BY next_check_at ASC
@@ -139,12 +141,25 @@ const processMonitor = async (monitor) => {
     );
     // First-ever check (PENDING) only establishes a baseline — notify on
     // real UP<->DOWN transitions to avoid noise for brand-new monitors.
+    // DOWN emails additionally require FAILURE_THRESHOLD consecutive failures
+    // so a single blip doesn't page the owner.
     if (prevStatus !== "PENDING") {
-      await notifyTransition({
-        monitor,
-        type: probe.status === "DOWN" ? "DOWN" : "RECOVERY",
-        probe,
-      }).catch((error) => console.error("[worker] notify error", error));
+      if (probe.status === "DOWN") {
+        const failures = (monitor.consecutive_failures ?? 0) + 1;
+        if (failures >= FAILURE_THRESHOLD) {
+          await notifyTransition({ monitor, type: "DOWN", probe }).catch((error) =>
+            console.error("[worker] notify error", error)
+          );
+        } else {
+          console.log(
+            `[worker] DOWN suppressed monitor=${monitor.id} failures=${failures}/${FAILURE_THRESHOLD}`
+          );
+        }
+      } else {
+        await notifyTransition({ monitor, type: "RECOVERY", probe }).catch((error) =>
+          console.error("[worker] notify error", error)
+        );
+      }
     }
   } else {
     console.log(
@@ -202,7 +217,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-console.log(`[worker] starting cron=${CRON} batch=${BATCH} concurrency=${CONCURRENCY}`);
+console.log(`[worker] starting cron=${CRON} batch=${BATCH} concurrency=${CONCURRENCY} failureThreshold=${FAILURE_THRESHOLD}`);
 
 await tick();
 task = cron.schedule(CRON, () => {

@@ -106,7 +106,7 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
             </div>
             
             <div className="flex-1 space-y-3 md:space-y-4 mb-8 md:mb-10">
-              {['1 Monitor', '5-minute check intervals', 'Email & Slack Alerts', '7-day data retention', 'Standard support'].map((feature, i) => (
+              {['1 Monitor', '5-minute check intervals', 'Email alerts', '7-day data retention', 'Standard support'].map((feature, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <Check className="w-4 h-4 md:w-5 md:h-5 text-[#19B98A] shrink-0 mt-0.5" />
                   <span className="font-sans text-sm md:text-base text-[#080D18]">{feature}</span>
@@ -157,7 +157,7 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
               </div>
               
               <div className="relative z-10 flex-1 space-y-3 md:space-y-4 mb-8 md:mb-10">
-                {['5 Monitors', '1-minute check intervals', 'Multi-channel Escalations', 'Custom Status Pages', '1-year data retention', 'API Access', 'Priority SLA support'].map((feature, i) => (
+                {['5 Monitors', '1-minute check intervals', 'Email alerts', 'Custom Status Pages (soon)', '1-year data retention', 'Priority support'].map((feature, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <Check className="w-4 h-4 md:w-5 md:h-5 text-[#19B98A] shrink-0 mt-0.5" />
                     <span className="font-sans text-sm md:text-base text-[#F5F5F2]">{feature}</span>

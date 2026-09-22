@@ -21,7 +21,9 @@ import {
   updateAlert,
   deleteAlert,
   sendTestAlert,
+  getMonitorStats,
   hydrateMonitor,
+  hydrateMonitorFromStats,
   displayName,
   isPaid,
   maxMonitors,
@@ -53,7 +55,7 @@ const itemVariants = {
   show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
 };
 
-const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: { isOpen: boolean, onClose: () => void, onSave: (monitor: Monitor) => void, user: User, currentMonitorsCount: number }) => {
+const QuickAddModal = ({ isOpen, onClose, onSave, onUpgrade, user, currentMonitorsCount }: { isOpen: boolean, onClose: () => void, onSave: (monitor: Monitor) => void, onUpgrade: () => void, user: User, currentMonitorsCount: number }) => {
   const [url, setUrl] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,28 +100,8 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
     // Enter verification state (shows loading spinner)
     setIsVerifying(true);
 
-    // Lightweight reachability pre-check (opaque response only proves DNS+TCP).
-    // The authoritative result comes from the backend probe below.
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      await fetch(formattedUrl, {
-        mode: 'no-cors',
-        signal: controller.signal,
-        method: 'HEAD'
-      });
-      clearTimeout(timeoutId);
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        setError('Connection timed out. Please check if the website is online.');
-      } else {
-        setError('Unable to reach website. Please check the URL and try again.');
-      }
-      setIsVerifying(false);
-      return;
-    }
-
+    // The backend probe is authoritative — no browser pre-check here
+    // (no-cors HEAD is opaque and fails on CORS even for healthy sites).
     // Create the monitor on the backend — this starts real scheduled checks.
     try {
       const newMonitor = await createMonitor({
@@ -168,8 +150,8 @@ const QuickAddModal = ({ isOpen, onClose, onSave, user, currentMonitorsCount }: 
                 </p>
               </div>
               {user.plan === 'free' && (
-                <button 
-                  onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')}
+                <button
+                  onClick={onUpgrade}
                   className="w-full bg-[#3154FF] hover:bg-[#2546E5] text-white text-sm font-medium px-6 py-2.5 rounded-md transition-colors shadow-sm"
                 >
                   Upgrade to Pro
@@ -456,12 +438,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [loadingMonitors, setLoadingMonitors] = useState(true);
   const [monitorsError, setMonitorsError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; kind: 'info' | 'error' }[]>([]);
   const [editTarget, setEditTarget] = useState<Monitor | null>(null);
   const [monitorToDelete, setMonitorToDelete] = useState<Monitor | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [checkingIds, setCheckingIds] = useState<string[]>([]);
+  const [monitorQuery, setMonitorQuery] = useState('');
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const [isTestingAlert, setIsTestingAlert] = useState(false);
   const [testSuccess, setTestSuccess] = useState(false);
@@ -487,6 +471,18 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
     }
   };
 
+  const pushToast = (msg: string, kind: 'info' | 'error' = 'info') => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev.slice(-2), { id, msg, kind }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  const handleUpgradeClick = () => {
+    pushToast('Pro billing is not live in MVP — your plan stays Free (1 monitor / 5-min checks).');
+  };
+
   const handleAuthError = (err: unknown) => {
     if (err instanceof ApiError && err.status === 401) {
       onLogout();
@@ -498,23 +494,38 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
   const refreshChecksFor = async (monitorId: string, base: Monitor): Promise<Monitor> => {
     const checks = await listChecks(monitorId, 50);
     setChecksByMonitor(prev => ({ ...prev, [monitorId]: checks }));
-    return hydrateMonitor(base, checks);
+    let hydrated = hydrateMonitor(base, checks);
+    try {
+      const stats = await getMonitorStats(monitorId, 50);
+      hydrated = hydrateMonitorFromStats(hydrated, stats);
+    } catch {
+      /* stats endpoint is best-effort — check rows already hydrate the card */
+    }
+    return hydrated;
   };
 
-  const fetchAll = async () => {
-    setLoadingMonitors(true);
+  const fetchAll = async (silent = false) => {
+    if (!silent) {
+      setLoadingMonitors(true);
+    }
     setMonitorsError(null);
     try {
       const [fetchedMonitors, fetchedAlerts] = await Promise.all([listMonitors(), listAlerts()]);
       const hydrated = await Promise.all(
         fetchedMonitors.map(async (m) => {
-          try {
-            const checks = await listChecks(m.id, 50);
-            setChecksByMonitor(prev => ({ ...prev, [m.id]: checks }));
-            return hydrateMonitor(m, checks);
-          } catch {
-            return m;
+          const [checksRes, statsRes] = await Promise.allSettled([
+            listChecks(m.id, 50),
+            getMonitorStats(m.id, 50),
+          ]);
+          let next = m;
+          if (checksRes.status === 'fulfilled') {
+            setChecksByMonitor(prev => ({ ...prev, [m.id]: checksRes.value }));
+            next = hydrateMonitor(next, checksRes.value);
           }
+          if (statsRes.status === 'fulfilled') {
+            next = hydrateMonitorFromStats(next, statsRes.value);
+          }
+          return next;
         })
       );
       setMonitors(hydrated);
@@ -524,13 +535,29 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
         setMonitorsError(friendlyApiError(err));
       }
     } finally {
-      setLoadingMonitors(false);
+      if (!silent) {
+        setLoadingMonitors(false);
+      }
     }
   };
 
   // Fetch monitors + alerts + check history when the user changes.
+  // Poll silently every 60s and on tab focus so UP/DOWN flips appear
+  // without a manual refresh. nowTick re-renders relative timestamps.
   useEffect(() => {
     fetchAll();
+    const interval = setInterval(() => fetchAll(true), 60000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchAll(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const tick = setInterval(() => setNowTick(Date.now()), 30000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      clearInterval(interval);
+      clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
@@ -542,10 +569,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
       setMonitors(monitors.filter(m => m.id !== monitorToDelete.id));
       setAlerts(alerts.filter(a => a.monitor_id !== monitorToDelete.id));
       setMonitorToDelete(null);
-      setNotice(`Monitor "${monitorToDelete.name}" deleted.`);
+      pushToast(`Monitor "${monitorToDelete.name}" deleted.`);
     } catch (err) {
       if (!handleAuthError(err)) {
-        setNotice(friendlyApiError(err));
+        pushToast(friendlyApiError(err), 'error');
       }
     } finally {
       setIsDeleting(false);
@@ -559,10 +586,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
       const updated = await runCheck(monitor.id);
       const hydrated = await refreshChecksFor(monitor.id, updated);
       setMonitors(prev => prev.map(m => (m.id === monitor.id ? hydrated : m)));
-      setNotice(`Check completed for "${monitor.name}".`);
+      pushToast(`Check completed for "${monitor.name}".`);
     } catch (err) {
       if (!handleAuthError(err)) {
-        setNotice(friendlyApiError(err));
+        pushToast(friendlyApiError(err), 'error');
       }
     } finally {
       setCheckingIds(prev => prev.filter(id => id !== monitor.id));
@@ -594,10 +621,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
     try {
       const alert = await createAlert({ monitor_id: monitorId, target });
       setAlerts(prev => [alert, ...prev]);
-      setNotice(`Alert created for ${target}.`);
+      pushToast(`Alert created for ${target}.`);
     } catch (err) {
       if (!handleAuthError(err)) {
-        setNotice(friendlyApiError(err));
+        pushToast(friendlyApiError(err), 'error');
       }
     } finally {
       setSavingAlertId(null);
@@ -611,7 +638,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
       setAlerts(prev => prev.map(a => (a.id === alert.id ? updated : a)));
     } catch (err) {
       if (!handleAuthError(err)) {
-        setNotice(friendlyApiError(err));
+        pushToast(friendlyApiError(err), 'error');
       }
     } finally {
       setSavingAlertId(null);
@@ -623,10 +650,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
     try {
       await deleteAlert(alert.id);
       setAlerts(prev => prev.filter(a => a.id !== alert.id));
-      setNotice('Alert rule deleted.');
+      pushToast('Alert rule deleted.');
     } catch (err) {
       if (!handleAuthError(err)) {
-        setNotice(friendlyApiError(err));
+        pushToast(friendlyApiError(err), 'error');
       }
     } finally {
       setSavingAlertId(null);
@@ -686,6 +713,17 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
   const paidPlan = isPaid(user.plan);
   const planLimit = maxMonitors(user.plan);
   const planIntervalLabel = intervalLabel(user.plan);
+
+  // nowTick forces relative timestamps to re-render every 30s.
+  void nowTick;
+
+  const filteredMonitors = useMemo(() => {
+    const q = monitorQuery.trim().toLowerCase();
+    if (!q) return monitors;
+    return monitors.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.url.toLowerCase().includes(q)
+    );
+  }, [monitors, monitorQuery]);
 
   const NavItem = ({ id, icon: Icon, label, badge }: { id: string, icon: any, label: string, badge?: string }) => (
     <button
@@ -828,9 +866,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
           <div className="flex items-center gap-4">
             <div className="relative hidden md:block">
               <Search className="w-4 h-4 text-[#6B6B6B] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text" 
-                placeholder="Search resources..." 
+              <input
+                type="text"
+                value={monitorQuery}
+                onChange={(e) => {
+                  setMonitorQuery(e.target.value);
+                  if (activeRoute !== 'monitors' && e.target.value) setActiveRoute('monitors');
+                }}
+                placeholder="Search monitors..."
                 className="bg-[#F7F7F9] border border-[#E5E5E5] rounded-md pl-9 pr-12 py-1.5 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF] w-64 transition-all placeholder-[#6B6B6B]"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
@@ -838,27 +881,51 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                 <kbd className="bg-[#FFFFFF] border border-[#E5E5E5] rounded px-1.5 text-[10px] font-mono text-[#6B6B6B]">K</kbd>
               </div>
             </div>
-            <button className="relative text-[#6B6B6B] hover:text-[#111111] transition-colors">
+            <button
+              onClick={() => setActiveRoute('incidents')}
+              className="relative text-[#6B6B6B] hover:text-[#111111] transition-colors"
+              title={activeIncidents.length > 0 ? `${activeIncidents.length} active incident(s)` : 'No active incidents'}
+            >
               <Bell className="w-4 h-4" />
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#EF4444] rounded-full border-2 border-white"></span>
+              {activeIncidents.length > 0 ? (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 bg-[#EF4444] text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                  {activeIncidents.length}
+                </span>
+              ) : (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#10B981] rounded-full border-2 border-white"></span>
+              )}
             </button>
           </div>
         </header>
 
         {/* Scrollable Dashboard Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          {notice && (
-            <div className="max-w-5xl mx-auto mb-4 bg-[#FFFFFF] border border-[#E5E5E5] rounded-lg px-4 py-3 text-sm text-[#111111] flex items-center justify-between gap-3 shadow-sm">
-              <span>{notice}</span>
-              <button onClick={() => setNotice(null)} className="text-[#6B6B6B] hover:text-[#111111] transition-colors">
-                <X className="w-4 h-4" />
-              </button>
+          {toasts.length > 0 && (
+            <div className="max-w-5xl mx-auto mb-4 space-y-2">
+              {toasts.map((t) => (
+                <div
+                  key={t.id}
+                  className={`border rounded-lg px-4 py-3 text-sm flex items-center justify-between gap-3 shadow-sm ${
+                    t.kind === 'error'
+                      ? 'bg-[#EF4444]/10 border-[#EF4444]/20 text-[#B91C1C]'
+                      : 'bg-[#FFFFFF] border-[#E5E5E5] text-[#111111]'
+                  }`}
+                >
+                  <span>{t.msg}</span>
+                  <button
+                    onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+                    className="text-[#6B6B6B] hover:text-[#111111] transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           {monitorsError && (
             <div className="max-w-5xl mx-auto mb-4 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-lg px-4 py-3 text-sm text-[#EF4444] flex items-center justify-between gap-3">
               <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {monitorsError}</span>
-              <button onClick={fetchAll} className="font-medium hover:underline shrink-0">Retry</button>
+              <button onClick={() => fetchAll()} className="font-medium hover:underline shrink-0">Retry</button>
             </div>
           )}
           {activeRoute === 'overview' ? (
@@ -877,8 +944,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                 </div>
                 <div className="flex items-center gap-3">
                   {user.plan === 'free' && (
-                    <button 
-                      onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')}
+                    <button
+                      onClick={handleUpgradeClick}
+                      title="Pro billing is not live in MVP"
                       className="bg-gradient-to-r from-[#F59E0B] to-[#FBBF24] hover:opacity-90 text-[#78350F] text-sm font-semibold px-4 py-2 rounded-md flex items-center justify-center transition-opacity shadow-sm border border-[#F59E0B]/20"
                     >
                       UPGRADE TO PRO
@@ -975,8 +1043,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                   </div>
 
                   {user.plan === 'free' && (
-                    <button 
-                      onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')}
+                    <button
+                      onClick={handleUpgradeClick}
+                      title="Pro billing is not live in MVP"
                       className="mt-6 w-full bg-[#111111] hover:bg-[#000000] text-white text-xs font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2"
                     >
                       <Zap className="w-3 h-3 text-[#F59E0B]" /> Upgrade to Pro
@@ -1094,7 +1163,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                             </motion.div>
                           </td>
                         </tr>
-                      ) : monitors.map((monitor) => (
+                      ) : filteredMonitors.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-12 text-center text-[#6B6B6B]">
+                            <p className="text-sm">No monitors match “{monitorQuery}”. <button onClick={() => setMonitorQuery('')} className="text-[#3154FF] font-medium hover:underline">Clear search</button></p>
+                          </td>
+                        </tr>
+                      ) : filteredMonitors.map((monitor) => (
                         <MonitorRow
                           key={monitor.id}
                           monitor={monitor}
@@ -1139,9 +1214,11 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                 <div className="p-4 border-b border-[#E5E5E5] bg-[#F7F7F9]">
                   <div className="relative max-w-md">
                     <Search className="w-4 h-4 text-[#6B6B6B] absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input 
-                      type="text" 
-                      placeholder="Search monitors..." 
+                    <input
+                      type="text"
+                      value={monitorQuery}
+                      onChange={(e) => setMonitorQuery(e.target.value)}
+                      placeholder="Search monitors..."
                       className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md pl-9 pr-3 py-2 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF]"
                     />
                   </div>
@@ -1172,7 +1249,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                             <p>No monitors found. Click "Add Monitor" to get started.</p>
                           </td>
                         </tr>
-                      ) : monitors.map((monitor) => (
+                      ) : filteredMonitors.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-12 text-center text-[#6B6B6B]">
+                            <p className="text-sm">No monitors match “{monitorQuery}”. <button onClick={() => setMonitorQuery('')} className="text-[#3154FF] font-medium hover:underline">Clear search</button></p>
+                          </td>
+                        </tr>
+                      ) : filteredMonitors.map((monitor) => (
                         <MonitorRow
                           key={monitor.id}
                           monitor={monitor}
@@ -1250,9 +1333,10 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight text-[#111111] mb-1">Status Pages</h2>
-                  <p className="text-[#6B6B6B] text-sm">Create public status pages to keep your customers informed.</p>
+                  <p className="text-[#6B6B6B] text-sm">Public status pages are coming soon — preview below uses your live monitors.</p>
                 </div>
-                <button 
+                <button
+                  onClick={() => pushToast('Public status pages are coming soon in MVP.')}
                   className="bg-[#111111] hover:bg-[#000000] text-white text-sm font-medium px-4 py-2 rounded-md flex items-center justify-center gap-2 transition-colors shadow-sm"
                 >
                   <Plus className="w-4 h-4" /> Create Status Page
@@ -1483,8 +1567,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                     </div>
                   </div>
                   {!paidPlan && (
-                    <button 
-                      onClick={() => window.open('https://buy.stripe.com/test_12345', '_blank')}
+                    <button
+                      onClick={handleUpgradeClick}
+                      title="Pro billing is not live in MVP"
                       className="bg-[#111111] hover:bg-[#000000] text-white text-xs font-medium px-4 py-2 rounded-md transition-colors"
                     >
                       Upgrade
@@ -1649,14 +1734,19 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
             onClose={() => setIsQuickAddOpen(false)}
             user={user}
             currentMonitorsCount={totalMonitors}
+            onUpgrade={() => {
+              setIsQuickAddOpen(false);
+              handleUpgradeClick();
+            }}
             onSave={(m) => {
               setMonitors([...monitors, m]);
               setIsQuickAddOpen(false);
+              pushToast(`Monitor "${m.name}" added.`);
               // New monitors get an email rule for the account address automatically
               // so downtime actually notifies. Best-effort: rules can be edited later.
               createAlert({ monitor_id: m.id, target: user.email })
                 .then((alert) => setAlerts((prev) => [alert, ...prev]))
-                .catch(() => setNotice(`Monitor "${m.name}" added. Open Alerts to configure email notifications.`));
+                .catch(() => pushToast(`Monitor "${m.name}" added. Open Alerts to configure email notifications.`, 'error'));
             }}
           />
         )}

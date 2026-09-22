@@ -289,3 +289,70 @@ export const runManualCheck = async (userId, monitorId) => {
     client.release();
   }
 };
+
+// Aggregated stats for one monitor — lets the dashboard avoid
+// client-side math over raw check rows.
+export const getMonitorStats = async (userId, monitorId, { window = 50 } = {}) => {
+  await getMonitorById(userId, monitorId);
+
+  const result = await pool.query(
+    `
+      WITH recent AS (
+        SELECT success, response_time_ms, checked_at
+        FROM checks
+        WHERE monitor_id = $1
+        ORDER BY checked_at DESC
+        LIMIT $2
+      )
+      SELECT
+        COUNT(*)::int AS total_checks,
+        COUNT(*) FILTER (WHERE success)::int AS up_checks,
+        AVG(response_time_ms)::float AS avg_response_ms,
+        MAX(checked_at) AS last_check_at
+      FROM recent
+    `,
+    [monitorId, window]
+  );
+  const row = result.rows[0];
+  const total = row.total_checks ?? 0;
+  const up = row.up_checks ?? 0;
+  return {
+    total_checks: total,
+    up_checks: up,
+    uptime_percent: total > 0 ? Number(((up / total) * 100).toFixed(2)) : null,
+    avg_response_ms:
+      row.avg_response_ms !== null ? Math.round(row.avg_response_ms) : null,
+    last_check_at: row.last_check_at,
+    window,
+  };
+};
+
+const ALERT_LOG_COLUMNS = `
+  id, monitor_id, alert_type, message, channel,
+  delivery_status, provider_id, sent_at, created_at
+`;
+
+export const listAlertLogs = async (userId, monitorId, { limit = 20, offset = 0 } = {}) => {
+  await getMonitorById(userId, monitorId);
+
+  const [logsResult, countResult] = await Promise.all([
+    pool.query(
+      `
+        SELECT ${ALERT_LOG_COLUMNS}
+        FROM alert_logs
+        WHERE monitor_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+      `,
+      [monitorId, limit, offset]
+    ),
+    pool.query("SELECT COUNT(*)::int AS total FROM alert_logs WHERE monitor_id = $1", [
+      monitorId,
+    ]),
+  ]);
+
+  return {
+    logs: logsResult.rows,
+    pagination: { total: countResult.rows[0].total, limit, offset },
+  };
+};

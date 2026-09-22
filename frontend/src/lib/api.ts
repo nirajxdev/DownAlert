@@ -74,6 +74,27 @@ export interface ApiAlert {
   updated_at: string;
 }
 
+export interface ApiStats {
+  total_checks: number;
+  up_checks: number;
+  uptime_percent: number | null;
+  avg_response_ms: number | null;
+  last_check_at: string | null;
+  window: number;
+}
+
+export interface ApiAlertLog {
+  id: string;
+  monitor_id: string;
+  alert_type: "DOWN" | "RECOVERY";
+  message: string;
+  channel: string;
+  delivery_status: "SENT" | "FAILED";
+  provider_id: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // UI shapes (camelCase, what Dashboard components consume)
 // ---------------------------------------------------------------------------
@@ -241,6 +262,23 @@ export const runCheck = async (monitorId: string): Promise<Monitor> => {
   return hydrateMonitor(toUiMonitor(data.monitor), [data.check]);
 };
 
+export const getMonitorStats = async (monitorId: string, window = 50): Promise<ApiStats> => {
+  const data = await request<{ stats: ApiStats }>(
+    `/api/monitors/${monitorId}/stats?window=${window}`
+  );
+  return data.stats;
+};
+
+export const listAlertLogs = async (
+  monitorId: string,
+  limit = 20
+): Promise<ApiAlertLog[]> => {
+  const data = await request<{ logs: ApiAlertLog[] }>(
+    `/api/monitors/${monitorId}/alert-logs?limit=${limit}`
+  );
+  return data.logs;
+};
+
 // ---------------------------------------------------------------------------
 // Alerts
 // ---------------------------------------------------------------------------
@@ -325,6 +363,19 @@ export const hydrateMonitor = (m: Monitor, checks: ApiCheck[]): Monitor => {
     response: latest.response_time_ms !== null ? `${latest.response_time_ms}ms` : "—",
     lastCheck: relativeTime(latest.checked_at),
     uptime: `${((upCount / checks.length) * 100).toFixed(2)}%`,
+  };
+};
+
+/** Prefer server-computed stats when available (more accurate than last-50 client math). */
+export const hydrateMonitorFromStats = (m: Monitor, stats: ApiStats | null): Monitor => {
+  if (!stats || stats.total_checks === 0) return m;
+  return {
+    ...m,
+    response:
+      stats.avg_response_ms !== null ? `${stats.avg_response_ms}ms` : m.response,
+    lastCheck: stats.last_check_at ? relativeTime(stats.last_check_at) : m.lastCheck,
+    uptime:
+      stats.uptime_percent !== null ? `${stats.uptime_percent.toFixed(2)}%` : m.uptime,
   };
 };
 

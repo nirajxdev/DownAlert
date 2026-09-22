@@ -22,10 +22,10 @@ The product is built around one principle: **you should know immediately when so
 - **Built for Solo Developers**  - Designed specifically for solo builders, indie hackers, and small teams.
 - **Know When Something Breaks**  - Get notified when your website, API, or application goes down instead of discovering it from users.
 - **Simple & Easy to Set Up**  - Add your endpoint, configure monitoring, and let DevPulse handle the checks.
-- **Instant Direct Alerts**  - Receive downtime and recovery notifications through channels like Discord and email.
+- **Instant Direct Alerts**  - Receive downtime and recovery notifications via email.
 - **Track Uptime**  - Monitor the availability and reliability of your applications over time.
 - **No Enterprise Feature Bloat**  - Get the monitoring features you actually need without complex incident-management or team workflows.
-- **Affordable as You Grow**  - Start with a genuinely useful free tier and upgrade only when you need advanced capabilities.
+- **Affordable as You Grow**  - Start with a genuinely useful free tier (plan is a DB flag for MVP; payments out of scope).
 
 > **Your users shouldn't be the ones telling you your application is down. DownAlert should.**
 
@@ -46,19 +46,41 @@ The product is built around one principle: **you should know immediately when so
 
 ```
 DownAlert/
-  frontend/   # Next.js — dashboard, landing, auth screens
+  frontend/   # Vite + React — landing, dashboard, auth screens
   backend/    # Node.js + Express API (routes, services, db)
   worker/     # Checking engine — scheduler + HTTP checker
 ```
 
-Run the UI from `frontend/`:
+Run the full stack locally (three terminals):
 
 ```bash
+# 1. Backend API (http://localhost:5000)
+cd backend
+cp .env.example .env   # fill DATABASE_URL, JWT_SECRET, RESEND_API_KEY
+npm install
+npm run dev
+
+# 2. Worker (cron checker + email alerts)
+cd worker
+cp .env.example .env   # same DATABASE_URL + RESEND_API_KEY
+npm install
+npm run dev
+
+# 3. Frontend UI (http://localhost:3000)
 cd frontend
+cp .env.example .env   # VITE_API_URL=http://localhost:5000
+npm install
 npm run dev
 ```
 
-`backend/` and `worker/` are placeholders until the API and checker are added. Each folder has its own `package.json`.
+Or from the repo root (needs `npm install` once for `concurrently`):
+
+```bash
+npm install
+npm run dev   # runs api + worker + web together
+```
+
+Apply the DB schema once with `backend/db/schema.sql` (Postgres / Neon).
 
 ---
 
@@ -66,8 +88,8 @@ npm run dev
 
 | Layer | Tech |
 | :---- | :---- |
-| Frontend | Next.js \+ Tailwind CSS |
-| Backend | Node.js \+ Express |
+| Frontend | Vite + React + Tailwind CSS |
+| Backend | Node.js + Express |
 | Scheduler | node-cron |
 | Database | PostgreSQL (Supabase / Neon) |
 | Auth | Supabase Auth / Clerk |

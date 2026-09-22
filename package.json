@@ -1,0 +1,15 @@
+{
+  "name": "downalert",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DownAlert — uptime monitoring (Vite frontend, Express backend, node-cron worker)",
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c blue,green,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix worker\" \"npm run dev --prefix frontend\"",
+    "dev:api": "npm run dev --prefix backend",
+    "dev:worker": "npm run dev --prefix worker",
+    "dev:web": "npm run dev --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -5,6 +5,8 @@ import {
   updateMonitorSchema,
   monitorIdParamSchema,
   checksQuerySchema,
+  statsQuerySchema,
+  logsQuerySchema,
 } from "../validators/monitor.validator.js";
 import {
   createMonitor,
@@ -14,6 +16,8 @@ import {
   deleteMonitor,
   listChecks,
   runManualCheck,
+  getMonitorStats,
+  listAlertLogs,
 } from "../services/monitor.service.js";
 
 const router = express.Router();
@@ -131,6 +135,107 @@ router.get("/:id/checks", async (req, res) => {
     });
   } catch (error) {
     console.error("List checks error:", error);
+
+    if (error.message === "Monitor not found") {
+      return res.status(404).json({
+        success: false,
+        message: "Monitor not found",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /api/monitors/:id/stats - Aggregated uptime/latency for one of my monitors
+router.get("/:id/stats", async (req, res) => {
+  const paramValidation = monitorIdParamSchema.safeParse(req.params);
+
+  if (!paramValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid monitor ID",
+      errors: paramValidation.error.issues,
+    });
+  }
+
+  const queryValidation = statsQuerySchema.safeParse(req.query);
+
+  if (!queryValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid query parameters",
+      errors: queryValidation.error.issues,
+    });
+  }
+
+  try {
+    const stats = await getMonitorStats(
+      req.user.id,
+      paramValidation.data.id,
+      queryValidation.data
+    );
+
+    return res.status(200).json({
+      success: true,
+      stats,
+    });
+  } catch (error) {
+    console.error("Get monitor stats error:", error);
+
+    if (error.message === "Monitor not found") {
+      return res.status(404).json({
+        success: false,
+        message: "Monitor not found",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// GET /api/monitors/:id/alert-logs - Delivery history for one of my monitors
+router.get("/:id/alert-logs", async (req, res) => {
+  const paramValidation = monitorIdParamSchema.safeParse(req.params);
+
+  if (!paramValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid monitor ID",
+      errors: paramValidation.error.issues,
+    });
+  }
+
+  const queryValidation = logsQuerySchema.safeParse(req.query);
+
+  if (!queryValidation.success) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid query parameters",
+      errors: queryValidation.error.issues,
+    });
+  }
+
+  try {
+    const { logs, pagination } = await listAlertLogs(
+      req.user.id,
+      paramValidation.data.id,
+      queryValidation.data
+    );
+
+    return res.status(200).json({
+      success: true,
+      logs,
+      pagination,
+    });
+  } catch (error) {
+    console.error("List alert logs error:", error);
 
     if (error.message === "Monitor not found") {
       return res.status(404).json({

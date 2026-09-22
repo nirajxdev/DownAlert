@@ -143,7 +143,14 @@ export default function AuthModal({
                   Password
                 </label>
                 {mode === 'login' && (
-                  <button type="button" className="text-xs text-[#3154FF] hover:underline font-medium">Forgot password?</button>
+                  <button
+                    type="button"
+                    title="Password reset is not available in MVP"
+                    disabled
+                    className="text-xs text-[#A3A3A3] cursor-not-allowed font-medium"
+                  >
+                    Forgot password?
+                  </button>
                 )}
               </div>
               <div className="relative">
