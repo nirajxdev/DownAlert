@@ -279,6 +279,9 @@ export const listAlertLogs = async (
   return data.logs;
 };
 
+export const deliveryLabel = (status: ApiAlertLog["delivery_status"]): string =>
+  status === "SENT" ? "Delivered" : "Failed";
+
 // ---------------------------------------------------------------------------
 // Alerts
 // ---------------------------------------------------------------------------

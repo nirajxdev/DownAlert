@@ -103,6 +103,7 @@ const processMonitor = async (monitor) => {
   const errorType = probe.error ? String(probe.error).slice(0, 50) : null;
 
   const client = await pool.connect();
+  let newFailures = success ? 0 : (monitor.consecutive_failures ?? 0) + 1;
   try {
     await client.query("BEGIN");
 
@@ -114,7 +115,7 @@ const processMonitor = async (monitor) => {
       [monitor.id, probe.statusCode, probe.responseTime, success, errorType]
     );
 
-    await client.query(
+    const updateRes = await client.query(
       `
         UPDATE monitors
         SET current_status = $1,
@@ -123,9 +124,11 @@ const processMonitor = async (monitor) => {
             next_check_at = NOW() + (check_interval_seconds || ' seconds')::interval,
             updated_at = NOW()
         WHERE id = $3
+        RETURNING consecutive_failures
       `,
       [probe.status, success, monitor.id]
     );
+    newFailures = updateRes.rows[0].consecutive_failures;
 
     await client.query("COMMIT");
   } catch (error) {
@@ -135,36 +138,45 @@ const processMonitor = async (monitor) => {
     client.release();
   }
 
-  if (prevStatus !== probe.status) {
-    console.log(
-      `[worker] TRANSITION ${prevStatus}->${probe.status} monitor=${monitor.id} url=${monitor.url}`
-    );
-    // First-ever check (PENDING) only establishes a baseline — notify on
-    // real UP<->DOWN transitions to avoid noise for brand-new monitors.
-    // DOWN emails additionally require FAILURE_THRESHOLD consecutive failures
-    // so a single blip doesn't page the owner.
-    if (prevStatus !== "PENDING") {
-      if (probe.status === "DOWN") {
-        const failures = (monitor.consecutive_failures ?? 0) + 1;
-        if (failures >= FAILURE_THRESHOLD) {
-          await notifyTransition({ monitor, type: "DOWN", probe }).catch((error) =>
-            console.error("[worker] notify error", error)
-          );
-        } else {
-          console.log(
-            `[worker] DOWN suppressed monitor=${monitor.id} failures=${failures}/${FAILURE_THRESHOLD}`
-          );
-        }
-      } else {
-        await notifyTransition({ monitor, type: "RECOVERY", probe }).catch((error) =>
-          console.error("[worker] notify error", error)
-        );
-      }
+  // First-ever check (PENDING) only establishes a baseline — never notify on it.
+  // DOWN emails fire exactly once, when consecutive failures cross
+  // FAILURE_THRESHOLD (so a single blip stays silent and a sustained outage
+  // pages once, even if the DOWN state was first set by a manual check).
+  // Recovery emails fire on any DOWN -> UP flip.
+  if (probe.status === "DOWN") {
+    if (prevStatus === "PENDING") {
+      console.log(`[worker] BASELINE DOWN monitor=${monitor.id} url=${monitor.url}`);
+    } else if (newFailures === FAILURE_THRESHOLD) {
+      console.log(
+        `[worker] THRESHOLD ${prevStatus}->DOWN monitor=${monitor.id} failures=${newFailures}`
+      );
+      await notifyTransition({ monitor, type: "DOWN", probe }).catch((error) =>
+        console.error("[worker] notify error", error)
+      );
+    } else if (newFailures < FAILURE_THRESHOLD) {
+      console.log(
+        `[worker] DOWN suppressed monitor=${monitor.id} failures=${newFailures}/${FAILURE_THRESHOLD}`
+      );
+    } else {
+      console.log(
+        `[worker] ${monitor.id} ${monitor.url} -> DOWN (still down, failures=${newFailures})`
+      );
     }
-  } else {
-    console.log(
-      `[worker] ${monitor.id} ${monitor.url} -> ${probe.status} ${probe.statusCode ?? "-"} ${probe.responseTime}ms`
+  } else if (probe.status === "UP" && prevStatus === "DOWN") {
+    console.log(`[worker] TRANSITION DOWN->UP monitor=${monitor.id} url=${monitor.url}`);
+    await notifyTransition({ monitor, type: "RECOVERY", probe }).catch((error) =>
+      console.error("[worker] notify error", error)
     );
+  } else {
+    if (prevStatus !== probe.status) {
+      console.log(
+        `[worker] TRANSITION ${prevStatus}->${probe.status} monitor=${monitor.id} url=${monitor.url}`
+      );
+    } else {
+      console.log(
+        `[worker] ${monitor.id} ${monitor.url} -> ${probe.status} ${probe.statusCode ?? "-"} ${probe.responseTime}ms`
+      );
+    }
   }
 };
 

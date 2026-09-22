@@ -94,11 +94,11 @@ export default function HeroMonitor() {
       <div className="mt-6 pt-4 border-t border-[#DDE1E7]/10 flex justify-between relative z-10">
         <div className="flex items-center gap-2 font-mono text-[10px] text-[#687386]">
           <Globe className="w-3 h-3" />
-          <span>GLOBAL EDGE ROUTING</span>
+          <span>EMAIL ALERTS ON DOWN + RECOVERY</span>
         </div>
         <div className="flex items-center gap-2 font-mono text-[10px] text-[#687386]">
           <Clock className="w-3 h-3" />
-          <span>CHECK INTERVAL: 30s</span>
+          <span>CHECK INTERVAL: 5-MIN FREE</span>
         </div>
         <div className={`flex items-center gap-2 font-mono text-[10px] transition-colors duration-300 ${isPolling ? 'text-[#F5F5F2]' : 'text-[#687386]'}`}>
           <Activity className={`w-3 h-3 ${isPolling ? 'text-[#4169FF] animate-bounce' : ''}`} />

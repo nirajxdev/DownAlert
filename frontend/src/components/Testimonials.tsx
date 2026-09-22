@@ -5,28 +5,28 @@ import { Quote } from 'lucide-react';
 const testimonials = [
   {
     id: 1,
-    quote: "Pulse completely transformed how we monitor our microservices. The 1-minute check intervals and webhook integrations caught two silent failures before our users even noticed.",
+    quote: "My side project went down at 2am and DownAlert emailed me before a single user noticed. Fixed it over coffee instead of waking up to angry tweets.",
     author: "Sarah Chen",
-    role: "Lead DevOps Engineer",
-    company: "DataFlow Analytics",
+    role: "Solo Developer",
+    company: "Side-project SaaS",
     initials: "SC",
     bgClass: "bg-[#10B981]/10 text-[#10B981]",
   },
   {
     id: 2,
-    quote: "The interface is incredibly clean and focused. We migrated from a legacy uptime tracker, and Pulse gives us exactly what we need without the bloated enterprise UI.",
+    quote: "I dropped my bloated enterprise monitor for DownAlert. One monitor, one email when it's down — exactly what my store needed and nothing it didn't.",
     author: "Marcus Johnson",
-    role: "CTO",
+    role: "Indie Hacker",
     company: "Nexa Commerce",
     initials: "MJ",
     bgClass: "bg-[#3154FF]/10 text-[#3154FF]",
   },
   {
     id: 3,
-    quote: "Setup took less than five minutes. The global node distribution ensures our API latency is accurate across all our key markets in Europe and APAC.",
+    quote: "Setup took five minutes: paste the client URL, done. The check history shows my clients their site stays online, which is worth more than any report I could write.",
     author: "Elena Rodriguez",
-    role: "Senior Backend Developer",
-    company: "FinTech Solutions",
+    role: "Freelance Engineer",
+    company: "Client work",
     initials: "ER",
     bgClass: "bg-[#F59E0B]/10 text-[#F59E0B]",
   }
@@ -60,10 +60,10 @@ export default function Testimonials() {
           className="text-center max-w-2xl mx-auto mb-16"
         >
           <h2 className="text-3xl md:text-5xl font-semibold tracking-tight text-[#111111] mb-6">
-            Trusted by engineering teams.
+            Loved by solo builders.
           </h2>
           <p className="text-[#6B6B6B] text-lg leading-relaxed">
-            See how developers are using Pulse to keep their infrastructure reliable and their users happy.
+            See how independent developers use DownAlert to stop hearing about downtime from their users.
           </p>
         </motion.div>
 

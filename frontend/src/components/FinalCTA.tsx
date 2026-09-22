@@ -33,19 +33,19 @@ export default function FinalCTA({ onStartFree }: FinalCTAProps) {
 
       <div className="cta-content max-w-4xl mx-auto relative z-10 text-center">
         <h2 className="font-serif text-6xl md:text-8xl text-[#F5F5F2] leading-[0.95] tracking-tight mb-8">
-          The network <br />
-          <span className="italic text-[#687386]">is waiting.</span>
+          Stop hearing it <br />
+          <span className="italic text-[#687386]">from your users.</span>
         </h2>
         
         <p className="font-sans text-lg md:text-xl text-[#687386] max-w-lg mx-auto mb-12">
-          Cease relying on customer complaints as your primary alerting mechanism. Deploy a globally distributed probing cluster in under 60 seconds.
+          Add your URL and get your first email alert in minutes. Free for your first monitor.
         </p>
 
         <button
           onClick={onStartFree}
           className="bg-[#4169FF] text-white px-8 py-4 font-mono text-sm tracking-wide hover:bg-white hover:text-[#080D18] transition-colors inline-flex items-center justify-center gap-3 group"
         >
-          INITIALIZE SETUP
+          START MONITORING FREE
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

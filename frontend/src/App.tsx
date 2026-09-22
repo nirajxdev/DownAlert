@@ -12,7 +12,6 @@ import InfoModal from './components/InfoModal';
 import SectionWrapper from './components/SectionWrapper';
 import ScrollProgress from './components/ScrollProgress';
 import Dashboard from './components/Dashboard';
-import GlobalNodeDistribution from './components/GlobalNodeDistribution';
 import Testimonials from './components/Testimonials';
 import { type User, me, logout, getToken } from './lib/api';
 
@@ -93,7 +92,6 @@ export default function App() {
         onOpenLogin={handleOpenLogin}
         onOpenSignup={() => handleOpenSignup('free')}
         onOpenDocs={() => setDocsModalOpen(true)}
-        onOpenEnterprise={() => setInfoModalPage('sales')}
       />
 
       {/* Main Content Sections: Exactly 1. Hero, 2. Built For, 3. How It Works, 4. Pricing, 5. Footer */}
@@ -121,18 +119,29 @@ export default function App() {
           />
         </SectionWrapper>
 
-        {/* Section 03.5 — GLOBAL NETWORK */}
+        {/* Section 03.5 — SIMPLE BY DESIGN */}
         <SectionWrapper>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
             <div className="text-center max-w-3xl mx-auto mb-16">
               <h2 className="text-3xl md:text-5xl font-semibold tracking-tight text-[#080D18] mb-6">
-                Tested from <span className="text-[#4169FF]">everywhere.</span>
+                Simple <span className="text-[#4169FF]">by design.</span>
               </h2>
               <p className="text-[#555C67] text-lg leading-relaxed">
-                We distribute your uptime checks across multiple edge locations globally to ensure your service is accessible from every corner of the internet.
+                No SDK to install, no DevOps setup, no charts to interpret. Just a clear UP/DOWN status and an email when it changes.
               </p>
             </div>
-            <GlobalNodeDistribution />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 max-w-4xl mx-auto">
+              {[
+                { title: 'NO SDK', text: 'Paste your URL and you’re done. Nothing to install in your app.' },
+                { title: 'EMAIL ALERTS', text: 'Plain-language DOWN and recovery emails, straight to your inbox.' },
+                { title: 'CHECK HISTORY', text: 'Every check is saved, so you can see exactly when things broke.' },
+              ].map((item) => (
+                <div key={item.title} className="bg-white border border-[#DDE1E7] p-6 text-left">
+                  <h3 className="font-mono text-sm tracking-widest text-[#080D18] mb-3">{item.title}</h3>
+                  <p className="text-[#555C67] text-sm leading-relaxed">{item.text}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </SectionWrapper>
 
@@ -145,7 +154,7 @@ export default function App() {
         <SectionWrapper>
           <Pricing
             onSelectFree={() => handleOpenSignup('free')}
-            onSelectPro={() => handleOpenSignup('pro')}
+            onSelectPro={() => handleOpenSignup('free')}
           />
         </SectionWrapper>
 

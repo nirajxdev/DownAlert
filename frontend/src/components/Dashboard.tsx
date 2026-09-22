@@ -6,7 +6,6 @@ import {
   RefreshCw, Clock, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import GlobalNodeDistribution from './GlobalNodeDistribution';
 import PerformanceChart from './PerformanceChart';
 import StatusPage from './StatusPage';
 import {
@@ -22,6 +21,7 @@ import {
   deleteAlert,
   sendTestAlert,
   getMonitorStats,
+  listAlertLogs,
   hydrateMonitor,
   hydrateMonitorFromStats,
   displayName,
@@ -30,11 +30,14 @@ import {
   defaultInterval,
   intervalLabel,
   friendlyApiError,
+  relativeTime,
+  deliveryLabel,
   ApiError,
   type User,
   type Monitor,
   type ApiAlert,
   type ApiCheck,
+  type ApiAlertLog,
 } from '../lib/api';
 
 interface DashboardProps {
@@ -134,7 +137,7 @@ const QuickAddModal = ({ isOpen, onClose, onSave, onUpgrade, user, currentMonito
             </button>
           </div>
           <p className="text-[#6B6B6B] text-sm mb-6">
-            Enter the website link below. Your <span className="font-semibold text-[#111111] capitalize">{user.plan}</span> plan includes up to {monitorLimit} monitors with {checkInterval} check intervals.
+            Enter the website link below. Your <span className="font-semibold text-[#111111] capitalize">{user.plan}</span> plan includes up to {monitorLimit} monitor{monitorLimit === 1 ? '' : 's'} with {checkInterval} check intervals.
           </p>
 
           {limitReached ? (
@@ -181,7 +184,7 @@ const QuickAddModal = ({ isOpen, onClose, onSave, onUpgrade, user, currentMonito
                 className="w-full bg-[#111111] hover:bg-[#000000] text-white text-sm font-medium px-6 py-3 rounded-md transition-colors shadow-sm flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isVerifying ? (
-                  <><Activity className="w-4 h-4 animate-spin" /> Verifying Connection...</>
+                  <><Activity className="w-4 h-4 animate-spin" /> Adding Monitor...</>
                 ) : (
                   <><Plus className="w-4 h-4" /> Add Website</>
                 )}
@@ -271,7 +274,7 @@ const EditMonitorModal = ({ monitor, user, onClose, onSave }: { monitor: Monitor
                 onChange={(e) => setUrl(e.target.value)}
                 className="w-full bg-[#FFFFFF] border border-[#E5E5E5] rounded-md px-4 py-3 text-sm text-[#111111] focus:outline-none focus:border-[#3154FF] focus:ring-1 focus:ring-[#3154FF] shadow-sm disabled:opacity-50"
               />
-              <p className="text-xs text-[#A3A3A3] mt-1.5">Changing the URL resets status to pending and re-checks immediately.</p>
+              <p className="text-xs text-[#A3A3A3] mt-1.5">Changing the URL resets status to pending and re-checks on the next scheduled tick.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-[#111111] mb-1.5">Check interval (seconds)</label>
@@ -452,6 +455,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
   const [testError, setTestError] = useState<string | null>(null);
   const [alertFormTarget, setAlertFormTarget] = useState<{ [monitorId: string]: string }>({});
   const [savingAlertId, setSavingAlertId] = useState<string | null>(null);
+  const [logsByMonitor, setLogsByMonitor] = useState<Record<string, ApiAlertLog[]>>({});
 
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try {
@@ -560,6 +564,21 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
+
+  // Load recent delivery history when the Alerts tab opens (best-effort).
+  useEffect(() => {
+    if (activeRoute !== 'alerts' || monitors.length === 0) return;
+    Promise.allSettled(monitors.map((m) => listAlertLogs(m.id, 5))).then((settled) => {
+      setLogsByMonitor((prev) => {
+        const next = { ...prev };
+        settled.forEach((r, i) => {
+          if (r.status === 'fulfilled') next[monitors[i].id] = r.value;
+        });
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoute]);
 
   const handleDeleteMonitor = async () => {
     if (!monitorToDelete || isDeleting) return;
@@ -712,7 +731,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
   const capitalizedName = displayName(user.email);
   const paidPlan = isPaid(user.plan);
   const planLimit = maxMonitors(user.plan);
-  const planIntervalLabel = intervalLabel(user.plan);
+  const planIntervalLong = paidPlan ? '1 minute' : '5 minutes';
+  const hour = new Date().getHours();
+  const daypart = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
 
   // nowTick forces relative timestamps to re-render every 30s.
   void nowTick;
@@ -939,7 +960,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
               {/* Dashboard Header */}
               <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-[#111111] mb-2">Good morning, {capitalizedName}</h1>
+                  <h1 className="text-3xl font-semibold tracking-tight text-[#111111] mb-2">Good {daypart}, {capitalizedName}</h1>
                   <p className="text-[#6B6B6B] text-base">Here's what's happening with your endpoints today.</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1084,7 +1105,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                 </motion.div>
               ) : totalMonitors > 0 ? (
                 <motion.div variants={itemVariants} className="mb-8 bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl p-6 text-center text-sm text-[#6B6B6B]">
-                  No check data yet — checks run every {planIntervalLabel}. Use the refresh button on a monitor to probe it right now.
+                   No check data yet — checks run every {planIntervalLong}. Use the refresh button on a monitor to probe it right now.
                 </motion.div>
               ) : null}
 
@@ -1483,6 +1504,27 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                             </button>
                           </div>
                         )}
+                        {(logsByMonitor[m.id] ?? []).length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-[#E5E5E5]">
+                            <h4 className="text-xs font-semibold text-[#6B6B6B] uppercase tracking-wide mb-2">Recent deliveries</h4>
+                            <ul className="space-y-1.5">
+                              {(logsByMonitor[m.id] ?? []).map((log) => (
+                                <li key={log.id} className="flex items-center justify-between gap-3 text-xs">
+                                  <span className="text-[#6B6B6B] truncate">
+                                    {log.alert_type === 'DOWN' ? 'Down alert' : 'Recovery alert'} · {relativeTime(log.created_at)}
+                                  </span>
+                                  <span className={`shrink-0 font-bold px-1.5 py-0.5 rounded uppercase tracking-wide text-[10px] ${
+                                    log.delivery_status === 'SENT'
+                                      ? 'bg-[#10B981]/10 text-[#10B981]'
+                                      : 'bg-[#EF4444]/10 text-[#EF4444]'
+                                  }`}>
+                                    {deliveryLabel(log.delivery_status)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -1497,7 +1539,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
               <div className="mt-8">
                 <h3 className="text-lg font-semibold text-[#111111] mb-4">How email alerts work</h3>
                 <div className="bg-[#FFFFFF] border border-[#E5E5E5] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-6 text-sm text-[#6B6B6B] space-y-2">
-                  <p>When a monitor transitions from UP to DOWN, every enabled rule for that monitor receives an email. When it recovers, recovery emails go out to rules with recovery enabled.</p>
+                  <p>After 2 consecutive failed checks, every enabled rule for that monitor receives a DOWN email. When the site recovers, recovery emails go out to rules with recovery enabled.</p>
                   <p>Emails are sent from <span className="font-medium text-[#111111]">alerts@downalert.in</span>. New monitors get an email rule for your account address automatically — edit the target above to change it.</p>
                 </div>
               </div>
@@ -1667,9 +1709,9 @@ export default function Dashboard({ user, onLogout }: DashboardProps & { onUpdat
                       <Bell className="w-6 h-6 text-[#F59E0B]" />
                     </div>
                     <h3 className="text-xl font-semibold text-[#111111] mb-3">Stay Alerted</h3>
-                    <p className="text-[#6B6B6B] text-sm leading-relaxed">
-                      Once configured, we'll keep checking your endpoints and automatically notify you if anything goes down. You're all set!
-                    </p>
+                      <p className="text-[#6B6B6B] text-sm leading-relaxed">
+                        Once configured, we'll keep checking your endpoints and email you if anything goes down. You're all set!
+                      </p>
                   </motion.div>
                 )}
 

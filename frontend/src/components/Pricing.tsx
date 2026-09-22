@@ -76,11 +76,11 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
       <div className="max-w-7xl mx-auto">
         <div className="pricing-header text-center mb-16 md:mb-24">
           <h2 className="font-serif text-4xl sm:text-5xl md:text-6xl text-[#080D18] leading-[1.1] tracking-tight mb-4 md:mb-6">
-            Priced for scale.<br />
-            <span className="italic text-[#687386]">Built for certainty.</span>
+            Simple pricing.<br />
+            <span className="italic text-[#687386]">Start free.</span>
           </h2>
           <p className="font-sans text-[#687386] text-base sm:text-lg max-w-xl mx-auto px-4">
-            Predictable infrastructure overhead. Zero hidden capacity limits.
+            One monitor, checked every 5 minutes, free. Pro arrives later with more monitors and faster checks.
           </p>
         </div>
 
@@ -101,7 +101,7 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
                 <span className="text-[#687386] font-mono text-xs md:text-sm">/mo</span>
               </div>
               <p className="text-[#687386] mt-3 md:mt-4 font-sans text-xs md:text-sm">
-                For independent operators requiring baseline telemetry.
+                For solo builders watching their first site or API.
               </p>
             </div>
             
@@ -144,15 +144,14 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
               
               <div className="relative z-10 mb-6 md:mb-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-3 md:mb-2">
-                  <h3 className="font-mono text-base md:text-lg text-[#F5F5F2] tracking-wide">PRODUCTION</h3>
-                  <span className="bg-[#4169FF] text-white px-2 py-1 md:px-3 font-mono text-[9px] md:text-[10px] tracking-widest inline-block">RECOMMENDED</span>
+                  <h3 className="font-mono text-base md:text-lg text-[#F5F5F2] tracking-wide">PRO</h3>
+                  <span className="bg-[#F5F5F2]/10 text-[#F5F5F2]/80 border border-[#F5F5F2]/20 px-2 py-1 md:px-3 font-mono text-[9px] md:text-[10px] tracking-widest inline-block">COMING SOON</span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl md:text-5xl font-serif text-[#F5F5F2]">$29</span>
-                  <span className="text-[#687386] font-mono text-xs md:text-sm">/mo</span>
+                  <span className="text-4xl md:text-5xl font-serif text-[#F5F5F2]/60">Soon</span>
                 </div>
                 <p className="text-[#687386] mt-3 md:mt-4 font-sans text-xs md:text-sm">
-                  Mission-critical infrastructure monitoring for high-velocity teams.
+                  More monitors and 1-minute checks for growing projects. Billing isn't live yet.
                 </p>
               </div>
               
@@ -167,9 +166,9 @@ export default function Pricing({ onSelectFree, onSelectPro }: PricingProps) {
               
               <button 
                 onClick={onSelectPro}
-                className="relative z-10 w-full py-3 md:py-4 bg-[#4169FF] text-white font-mono text-sm md:text-base tracking-wide hover:bg-white hover:text-[#080D18] transition-colors"
+                className="relative z-10 w-full py-3 md:py-4 bg-[#F5F5F2]/10 text-[#F5F5F2]/70 border border-[#F5F5F2]/20 font-mono text-sm md:text-base tracking-wide hover:bg-[#F5F5F2]/20 transition-colors"
               >
-                UPGRADE TO PRO
+                NOTIFY ME AT LAUNCH
               </button>
             </div>
           </div>

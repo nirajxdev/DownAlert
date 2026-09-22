@@ -12,7 +12,6 @@ interface HowItWorksProps {
 
 export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
   const [url, setUrl] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
   const containerRef = useRef<HTMLElement>(null);
 
   useGSAP(() => {
@@ -93,15 +92,11 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (url && !isVerifying) {
-      setIsVerifying(true);
-      
-      // Simulate network connection/validation check
-      setTimeout(() => {
-        setIsVerifying(false);
-        onAddMonitorClick(url);
-        setUrl('');
-      }, 1500);
+    if (url.trim()) {
+      // No fake probe here — signup creates your account, then the
+      // dashboard runs a real check against the backend.
+      onAddMonitorClick(url.trim());
+      setUrl('');
     }
   };
 
@@ -117,15 +112,15 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#F5F5F2]/10 font-mono text-[10px] tracking-widest mb-6">
               <span className="w-1.5 h-1.5 bg-[#4169FF]"></span>
-              ARCHITECTURE
+              HOW IT WORKS
             </div>
             <h2 className="font-serif text-5xl md:text-6xl leading-[1.1] tracking-tight">
-              From failure to <br />
-              <span className="italic text-[#687386]">resolution.</span>
+              Your site goes down. <br />
+              <span className="italic text-[#687386]">You know first.</span>
             </h2>
           </div>
           <p className="font-sans text-[#687386] max-w-sm text-lg">
-            A deterministic routing pipeline ensuring you never miss a critical incident, architected from the ground up with zero single points of failure.
+            Add a URL, we check it on a schedule, and email you on every status change. No SDK, no DevOps setup.
           </p>
         </div>
 
@@ -141,10 +136,10 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
             <div className="hiw-step relative flex flex-col md:flex-row justify-between items-start md:items-center gap-8 group">
               <div className="hiw-content md:w-1/2 md:pr-16 md:text-right flex flex-col md:items-end z-20">
                 <span className="hiw-num font-mono text-[120px] leading-none text-[#F5F5F2]/5 font-bold absolute -top-16 md:right-12 pointer-events-none">01</span>
-                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">EDGE-NATIVE PROBING</h3>
+                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">ADD YOUR URL</h3>
                 <p className="text-[#687386] font-sans relative z-10 max-w-sm">
-                  Every 30 seconds, 142 edge nodes simultaneously ping your endpoints. 
-                  We measure DNS resolution, TCP connection latency, TLS handshakes, and TTFB with sub-millisecond precision.
+                  Paste your website or API endpoint. We validate it and start
+                  scheduled checks within minutes — one monitor on Free, up to five on Pro.
                 </p>
               </div>
               
@@ -154,9 +149,9 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
               
               <div className="hiw-terminal md:w-1/2 md:pl-16 pl-20 z-20">
                 <div className="p-6 bg-[#F5F5F2]/5 border border-[#F5F5F2]/10 font-mono text-sm text-[#19B98A] backdrop-blur-sm">
-                  &gt; TCP CONNECTION ... OK (12ms)<br/>
-                  &gt; TLS HANDSHAKE ... OK (24ms)<br/>
-                  &gt; HTTP GET /api/v1/health ... 200 OK
+                  &gt; URL VALIDATED ... OK<br/>
+                  &gt; FIRST CHECK SCHEDULED ... 5-MIN<br/>
+                  &gt; DASHBOARD ... LIVE
                 </div>
               </div>
             </div>
@@ -165,9 +160,10 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
             <div className="hiw-step relative flex flex-col md:flex-row-reverse justify-between items-start md:items-center gap-8 group">
               <div className="hiw-content md:w-1/2 md:pl-16 flex flex-col z-20">
                 <span className="hiw-num font-mono text-[120px] leading-none text-[#F5F5F2]/5 font-bold absolute -top-16 md:left-12 pointer-events-none">02</span>
-                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">CONSENSUS ENGINE</h3>
+                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">WE CHECK ON SCHEDULE</h3>
                 <p className="text-[#687386] font-sans relative z-10 max-w-sm">
-                  A localized routing failure isn't an outage. Our Byzantine fault-tolerant consensus engine requires 3+ geographically distributed nodes to mathematically confirm failure before triggering an alert.
+                  Every 5 minutes on Free, every minute on Pro. A check counts as
+                  UP when your site answers with a status under 400 — response time and history are saved to your dashboard.
                 </p>
               </div>
               
@@ -177,14 +173,14 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
               
               <div className="hiw-terminal md:w-1/2 md:pr-16 pl-20 md:pl-0 z-20">
                 <div className="p-6 bg-[#F5F5F2]/5 border border-[#F5F5F2]/10 font-mono text-sm backdrop-blur-sm">
-                  <div className="flex justify-between text-[#EF5757] mb-2">
-                    <span>NODE: US-EAST-1</span><span>ERR_TIMEOUT</span>
+                  <div className="flex justify-between text-[#19B98A] mb-2">
+                    <span>LAST CHECK</span><span>200 OK · 182MS</span>
                   </div>
-                  <div className="flex justify-between text-[#EF5757] mb-2">
-                    <span>NODE: EU-WEST-1</span><span>ERR_TIMEOUT</span>
+                  <div className="flex justify-between text-[#F5F5F2]/80 mb-2">
+                    <span>INTERVAL</span><span>5-MIN (FREE)</span>
                   </div>
-                  <div className="flex justify-between text-[#EF5757]">
-                    <span>NODE: AP-SOUTH-1</span><span>ERR_TIMEOUT</span>
+                  <div className="flex justify-between text-[#F5F5F2]/80">
+                    <span>UPTIME (50 CHECKS)</span><span>100.00%</span>
                   </div>
                 </div>
               </div>
@@ -194,10 +190,10 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
             <div className="hiw-step relative flex flex-col md:flex-row justify-between items-start md:items-center gap-8 group">
               <div className="hiw-content md:w-1/2 md:pr-16 md:text-right flex flex-col md:items-end z-20">
                 <span className="hiw-num font-mono text-[120px] leading-none text-[#F5F5F2]/5 font-bold absolute -top-16 md:right-12 pointer-events-none">03</span>
-                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">INCIDENT ESCALATION</h3>
+                <h3 className="font-mono text-xl tracking-wide mb-3 relative z-10">EMAIL WHEN IT'S DOWN</h3>
                 <p className="text-[#687386] font-sans relative z-10 max-w-sm">
-                  Instantaneous multi-channel routing. We map the affected service to your on-call 
-                  schedules and dispatch alerts via SMS, Slack, PagerDuty, and custom Webhooks.
+                  After 2 consecutive failed checks we send a plain-language DOWN
+                  email — and another one when your site recovers. No noise, no jargon.
                 </p>
               </div>
               
@@ -208,12 +204,12 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
               <div className="hiw-terminal md:w-1/2 md:pl-16 pl-20 z-20">
                 <div className="p-6 bg-[#F5F5F2]/5 border border-[#F5F5F2]/10 flex flex-col gap-3 backdrop-blur-sm">
                   <div className="bg-[#EF5757]/10 text-[#EF5757] border border-[#EF5757]/20 p-3 font-mono text-xs flex justify-between">
-                    <span>SEV-1 OUTAGE</span>
-                    <span>PAGERDUTY DISPATCHED</span>
+                    <span>YOUR-SITE IS DOWN</span>
+                    <span>EMAIL SENT</span>
                   </div>
-                  <div className="bg-[#4169FF]/10 text-[#4169FF] border border-[#4169FF]/20 p-3 font-mono text-xs flex justify-between">
-                    <span>SLACK #ALERTS</span>
-                    <span>MESSAGE SENT</span>
+                  <div className="bg-[#19B98A]/10 text-[#19B98A] border border-[#19B98A]/20 p-3 font-mono text-xs flex justify-between">
+                    <span>YOUR-SITE RECOVERED</span>
+                    <span>EMAIL SENT</span>
                   </div>
                 </div>
               </div>
@@ -225,32 +221,25 @@ export default function HowItWorks({ onAddMonitorClick }: HowItWorksProps) {
         {/* Interactive Interactive CTA */}
         <div className="hiw-cta mt-40 p-px bg-gradient-to-br from-[#4169FF]/50 via-[#DDE1E7]/10 to-[#687386]/20 max-w-2xl mx-auto shadow-2xl">
           <div className="bg-[#080D18] p-8 md:p-12 text-center">
-            <h3 className="font-serif text-3xl mb-4">Initialize a test probe.</h3>
-            <p className="text-[#687386] mb-8 font-sans">Enter an endpoint. We'll run a diagnostic check right now.</p>
+            <h3 className="font-serif text-3xl mb-4">Add your first monitor — free.</h3>
+            <p className="text-[#687386] mb-8 font-sans">Enter your URL. We'll take you to signup, then run a real check right away.</p>
             <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <input 
-                  type="url"
+                  type="text"
                   required
-                  disabled={isVerifying}
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://api.yourcompany.com"
+                  placeholder="example.com"
                   className="w-full bg-[#F5F5F2]/5 border border-[#F5F5F2]/20 px-4 py-3 pr-10 font-mono text-sm text-[#F5F5F2] placeholder-[#687386] focus:outline-none focus:border-[#4169FF] transition-colors disabled:opacity-50"
                 />
-                {isVerifying && (
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <Activity className="w-4 h-4 text-[#4169FF] animate-spin" />
-                  </div>
-                )}
               </div>
               <button 
                 type="submit"
-                disabled={isVerifying}
-                className="bg-[#F5F5F2] text-[#080D18] px-6 py-3 font-mono text-sm tracking-wide hover:bg-[#4169FF] hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px]"
+                className="bg-[#F5F5F2] text-[#080D18] px-6 py-3 font-mono text-sm tracking-wide hover:bg-[#4169FF] hover:text-white transition-colors flex items-center justify-center gap-2 min-w-[140px]"
               >
-                {isVerifying ? 'TESTING' : 'TEST'}
-                {!isVerifying && <ArrowRight className="w-4 h-4" />}
+                GET STARTED
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           </div>

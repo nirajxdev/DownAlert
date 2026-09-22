@@ -5,10 +5,9 @@ interface NavbarProps {
   onOpenLogin: () => void;
   onOpenSignup: () => void;
   onOpenDocs: () => void;
-  onOpenEnterprise: () => void;
 }
 
-export default function Navbar({ onOpenLogin, onOpenSignup, onOpenDocs, onOpenEnterprise }: NavbarProps) {
+export default function Navbar({ onOpenLogin, onOpenSignup, onOpenDocs }: NavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
@@ -58,7 +57,7 @@ export default function Navbar({ onOpenLogin, onOpenSignup, onOpenDocs, onOpenEn
             onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
             className="text-sm font-mono tracking-tight text-[#687386] hover:text-[#080D18] transition-colors"
           >
-            02. ARCHITECTURE
+            02. HOW IT WORKS
           </button>
           <button 
             onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
@@ -67,10 +66,10 @@ export default function Navbar({ onOpenLogin, onOpenSignup, onOpenDocs, onOpenEn
             03. PRICING
           </button>
           <button 
-            onClick={onOpenEnterprise}
+            onClick={onOpenDocs}
             className="text-sm font-mono tracking-tight text-[#687386] hover:text-[#080D18] transition-colors"
           >
-            04. ENTERPRISE
+            04. DOCS
           </button>
         </div>
 

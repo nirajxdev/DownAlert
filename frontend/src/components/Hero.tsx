@@ -103,7 +103,7 @@ export default function Hero({ onStartFree, onSeeHowItWorks }: HeroProps) {
         <div className="lg:col-span-6 flex flex-col items-start relative z-20">
           <div className="hero-stagger inline-flex items-center gap-2 px-3 py-1.5 border border-[#DDE1E7] bg-white shadow-sm font-mono text-[10px] tracking-widest text-[#080D18] mb-10">
             <span className="w-1.5 h-1.5 bg-[#19B98A] animate-pulse"></span>
-            SYSTEMS ONLINE
+            DOWNTIME ALERTS FOR SOLO BUILDERS
           </div>
           
           <h1 className="hero-stagger font-serif text-6xl md:text-8xl lg:text-[100px] text-[#080D18] leading-[0.9] tracking-tight mb-8">
@@ -112,8 +112,8 @@ export default function Hero({ onStartFree, onSeeHowItWorks }: HeroProps) {
           </h1>
           
           <p className="hero-stagger font-sans text-lg md:text-xl text-[#687386] leading-relaxed max-w-md mb-12">
-            Mission-critical uptime monitoring engineered for developer teams. 
-            Real-time alerts, global edge nodes, and deterministic telemetry.
+            Add your URL. DownAlert checks it around the clock and emails you
+            the moment it goes down — and when it's back.
           </p>
           
           <div className="hero-stagger flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
@@ -121,14 +121,14 @@ export default function Hero({ onStartFree, onSeeHowItWorks }: HeroProps) {
               onClick={onStartFree}
               className="w-full sm:w-auto bg-[#080D18] text-[#F5F5F2] px-8 py-4.5 font-mono text-sm tracking-wide hover:bg-[#4169FF] transition-colors duration-300 flex items-center justify-center gap-3 group"
             >
-              DEPLOY MONITOR
+              START MONITORING FREE
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
             <button 
               onClick={onSeeHowItWorks}
               className="w-full sm:w-auto px-8 py-4.5 font-mono text-sm tracking-wide text-[#080D18] bg-white border border-[#DDE1E7] hover:border-[#080D18] transition-colors duration-300 shadow-sm flex items-center justify-center gap-3"
             >
-              SEE ARCHITECTURE
+              SEE HOW IT WORKS
             </button>
           </div>
         </div>

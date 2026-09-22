@@ -47,7 +47,7 @@ export default function BuiltFor() {
               <span className="italic text-[#687386]">builders.</span>
             </h2>
             <p className="font-sans text-base sm:text-lg text-[#687386] leading-relaxed max-w-sm mb-6 md:mb-8">
-              We discarded the bloat of enterprise tools to craft a surgically precise observability platform. Built specifically for independent creators who demand absolute reliability.
+              No enterprise bloat, no noisy pages. Just a clean dashboard and a plain-language email the moment one of your sites goes down.
             </p>
             <div className="h-px w-full max-w-xs bg-[#DDE1E7] hidden md:block"></div>
           </div>
@@ -80,7 +80,7 @@ export default function BuiltFor() {
               <div>
                 <h3 className="font-serif text-2xl md:text-3xl text-[#080D18] mb-3 md:mb-4">Solo Developers</h3>
                 <p className="font-sans text-[#687386] leading-relaxed text-sm sm:text-base md:text-lg max-w-lg">
-                  Deploy with absolute confidence. When you are the entire engineering team, our automated anomaly detection acts as your sleepless DevOps counterpart, monitoring infrastructure while you sleep.
+                  Ship with confidence. When you're the entire engineering team, DownAlert watches your sites while you sleep and emails you the moment one stops responding.
                 </p>
               </div>
             </motion.div>
@@ -110,7 +110,7 @@ export default function BuiltFor() {
               <div>
                 <h3 className="font-serif text-2xl md:text-3xl text-[#FFFFFF] mb-3 md:mb-4">Indie Hackers</h3>
                 <p className="font-sans text-[#F5F5F2]/70 leading-relaxed text-sm md:text-base">
-                  Protect your revenue streams. Sub-second incident routing ensures you know about downtime before your paying customers take to Twitter.
+                  Protect your revenue. Hear about downtime from DownAlert's email — not from your paying customers.
                 </p>
               </div>
             </motion.div>
@@ -137,7 +137,7 @@ export default function BuiltFor() {
                 </motion.div>
                 <h3 className="font-serif text-2xl md:text-3xl text-[#080D18] mb-3 md:mb-4">Freelance Engineers</h3>
                 <p className="font-sans text-[#687386] leading-relaxed text-sm sm:text-base md:text-lg">
-                  Offer unprecedented SLAs to your clients. Hand over beautiful, white-labeled status pages that prove your systems maintain 99.999% uptime, elevating your perceived value.
+                  Keep every client site covered. A simple uptime history per monitor shows your work stays online — no complex incident-management workflows required.
                 </p>
               </div>
               <div className="font-mono text-[10px] md:text-xs tracking-widest text-[#687386] uppercase hidden sm:block">
